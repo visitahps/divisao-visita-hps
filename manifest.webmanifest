@@ -1,7 +1,7 @@
 {
- "name": "Visita HPS",
- "short_name": "Visita HPS",
- "description": "Divisão de visita e bate censo do HPS",
+ "name": "Enfermarias Hapvida",
+ "short_name": "Enfermarias Hapvida",
+ "description": "Divisão de visita, bate censo e manual do plantonista das enfermarias Hapvida",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
