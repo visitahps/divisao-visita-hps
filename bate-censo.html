@@ -243,6 +243,13 @@ details.kb dd{margin:0;overflow-wrap:anywhere;white-space:pre-line}
 .outtag{font-size:12.5px;font-weight:800;color:var(--card);background:var(--muted);border-radius:6px;padding:3px 8px;justify-self:start}
 .prev button[aria-pressed="true"][data-v="sem"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
 .falta label{font-size:12px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px}
+.naosaiu{background:var(--pm-soft);border-left:3px solid var(--pm);border-radius:8px;padding:8px 10px;margin-bottom:8px}
+.naosaiu label{color:var(--ink)!important}.naosaiu label small{font-weight:600;color:var(--muted)}
+.naosaiu.need label{color:var(--pm)!important}.naosaiu.need textarea{border-color:var(--pm)}
+.motivos{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 6px}
+.motivos button{border:1px solid var(--pm);background:var(--paper);color:var(--ink);border-radius:999px;padding:3px 9px;font-size:12px;font-weight:600;cursor:pointer}
+.motivos button[aria-pressed="true"]{background:var(--pm);color:#fff}
+.lembrete li .sj{color:var(--pm);font-weight:700}
 .kbcopy{margin-top:4px;border:1px dashed var(--line);background:transparent;border-radius:6px;padding:3px 8px;font-size:12px;font-weight:700;color:var(--brand);cursor:pointer}
 .falta textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--paper);font-size:14px;resize:vertical;min-height:40px}
 .foot{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -1095,6 +1102,9 @@ const isAlta = p => p.desfecho === 'alta' || (p.prev === 'efetivada' && !p.desfe
 const openPend = p => present(p) && !p.resolvido && !isAlta(p) && !p.desfecho && (hasPend(p) || ((p.prev === 'tarde' || p.prev === '24h') && !!String(p.falta || '').trim()));
 L.openKb = c => [c.exames, c.multi].join('\n').split(/\n|\/\/|;/).map(x => x.trim()).filter(x => x.length > 3 && !/\bOK\b|^N\/?A\b|^NEGA|REALIZAD|^S\/?P$/i.test(x));
 /* ontem com previsão em 24h (ou hoje à tarde que não saiu): é alta prevista para hoje */
+const MOTIVOS = ['Piora clínica', 'Aguarda exame/resultado', 'Aguarda parecer', 'Aguarda DD/DHD ou autorização', 'Aguarda família/transporte', 'Mudança de conduta'];
+const mustJust = (id, p) => present(p) && dueYest(id) && !isAlta(p) && !p.desfecho;
+const justTxt = p => String(p.naosaiu || '').trim().replace(/\s*\n\s*/g, '; ');
 const dueYest = id => { const y = S.yest.get(id); return !!y && !y.desfecho && !(y.prev === 'efetivada') && (y.prev === '24h' || y.prev === 'tarde'); };
 const FILTERS = [
   ['todos', 'Todos', p => present(p)],
@@ -1229,7 +1239,7 @@ function openDay(key) {
 function rescue() {
   if (S.rescueDone || !S.canWrite || S.yestLoaded !== S.day || !S.pats.size || S.day !== S.days[0]?.id) return;
   S.rescueDone = true;
-  const F = ['prev', 'falta', 'pend', 'desfecho', 'dd'], got = [];
+  const F = ['prev', 'falta', 'pend', 'desfecho', 'dd', 'naosaiu'], got = [];
   for (const [id, y] of S.yest) {
     const t = S.pats.get(id); if (!t || !present(t) || !y.atualizado) continue;
     if (D.key(new Date(y.atualizado)) < S.day || t.resg === y.atualizado) continue;
@@ -1276,10 +1286,11 @@ function renderLembrete() {
   if (!ps.length) { el.hidden = true; return; }
   const ok = ps.filter(([, p]) => isAlta(p)).length, falta = ps.length - ok;
   const n24 = ps.filter(([id]) => S.yest.get(id).prev === '24h').length;
+  const semJ = ps.filter(([id, p]) => mustJust(id, p) && !justTxt(p)).length;
   el.hidden = false;
-  el.innerHTML = `<b>⏰ Altas previstas para hoje pelo bate censo de ${esc(D.short(S.yestKey))}: ${ps.length}</b>${falta ? ` · <b>${falta} ainda sem alta</b>` : ' · todas com alta ✅'}
-    <div class="hint">${n24} com previsão em 24h${ps.length - n24 ? ` e ${ps.length - n24} que estavam para "hoje à tarde" e não saíram` : ''}. Priorize esses na visita.</div>
-    <ul>${ps.map(([id, p]) => `<li class="${isAlta(p) ? 'ok' : ''}">${esc(p.c.bed)} – ${esc(L.title(p.c.name))}${p.c.visitador ? ' · ' + esc(p.c.visitador.split(' ')[0]) : ''}</li>`).join('')}</ul>
+  el.innerHTML = `<b>⏰ Altas previstas para hoje pelo bate censo de ${esc(D.short(S.yestKey))}: ${ps.length}</b>${falta ? ` · <b>${falta} ainda sem alta</b>${semJ ? ` · <span class="sj">${semJ} sem justificativa</span>` : ' · todas justificadas'}` : ' · todas com alta ✅'}
+    <div class="hint">${n24} com previsão em 24h${ps.length - n24 ? ` e ${ps.length - n24} que estavam para "hoje à tarde" e não saíram` : ''}. Priorize esses na visita. Quem não sair hoje precisa de justificativa no cartão (“Por que não saiu?”).</div>
+    <ul>${ps.map(([id, p]) => `<li class="${isAlta(p) ? 'ok' : ''}">${esc(p.c.bed)} – ${esc(L.title(p.c.name))}${p.c.visitador ? ' · ' + esc(p.c.visitador.split(' ')[0]) : ''}${mustJust(id, p) && !justTxt(p) ? ' · <span class="sj">sem justificativa</span>' : ''}</li>`).join('')}</ul>
     <button class="btn" data-f="ontem">Ver só esses pacientes</button>`;
 }
 function renderTiles() {
@@ -1346,6 +1357,7 @@ function card(id, p) {
     ${yTxt}${sug}
     ${kb.length ? `<details class="kb"><summary>${H.kanban ? 'Kanban e censo' : 'Dados do censo'}</summary><dl>${kb.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl></details>` : ''}
     <fieldset class="ro" ${ro ? 'disabled' : ''}>
+      ${mustJust(id, p) ? `<div class="falta naosaiu ${justTxt(p) ? '' : 'need'}"><label for="n-${esc(id)}">Por que não saiu? <small>· alta prevista em ${esc(D.short(S.yestKey))} para hoje</small></label><div class="motivos">${MOTIVOS.map(m => `<button data-act="motivo" data-v="${esc(m)}" aria-pressed="${String(p.naosaiu || '').includes(m)}">${esc(m)}</button>`).join('')}</div><textarea id="n-${esc(id)}" data-act="naosaiu" rows="2" placeholder="Justifique: o que impediu a alta hoje e qual o novo plano">${esc(p.naosaiu || '')}</textarea></div>` : ''}
       <div class="prev" role="group" aria-label="Previsão de alta">${Object.entries(PREV).map(([v, lab]) => `<button data-act="prev" data-v="${v}" aria-pressed="${v === 'efetivada' ? isAlta(p) : p.prev === v && !p.desfecho}">${lab}</button>`).join('')}</div>
       <div class="falta"><label for="f-${esc(id)}">${FALTA_LBL[p.prev || '']}</label><textarea id="f-${esc(id)}" data-act="falta" rows="2" placeholder="${p.prev === 'sem' ? 'Ex.: aguarda vaga de UTI, antibiótico até 12/10' : 'Ex.: resultado de eco, parecer da cirurgia, autorização'}">${esc(p.falta)}</textarea></div>
       <div class="falta"><label for="p-${esc(id)}">Pendências do dia</label><textarea id="p-${esc(id)}" data-act="pend" rows="2" placeholder="Ex.: coletar labs, RX tórax, parecer da uro, ligar para família">${esc(p.pend || '')}</textarea>${!ro && !hasPend(p) && L.openKb(c).length ? `<button class="kbcopy" data-act="kbcopy">Trazer pendências do kanban (${L.openKb(c).length})</button>` : ''}</div>
@@ -1369,6 +1381,7 @@ $('list').addEventListener('click', e => {
   if ((act === 'prev' && b.dataset.v === 'efetivada') || act === 'alta') write(id, isAlta(p) ? { prev: back(), desfecho: '', desfechoEm: '' } : { prev: 'efetivada', prevAntes: p.prev === 'efetivada' ? (p.prevAntes || '') : (p.prev || ''), desfecho: 'alta', desfechoEm: now });
   else if (act === 'prev' || act === 'sug') write(id, { prev: p.prev === b.dataset.v && act === 'prev' && !p.desfecho ? '' : b.dataset.v, ...(isAlta(p) ? { desfecho: '', desfechoEm: '' } : {}) });
   else if (act === 'kbcopy') write(id, { pend: L.openKb(p.c).join('\n') });
+  else if (act === 'motivo') { const ta = document.getElementById('n-' + id), cur = (ta ? ta.value : p.naosaiu || '').trim(), m = b.dataset.v; clearTimeout(S.timers.get(id + '|naosaiu')); const parts = cur ? cur.split(/\s*;\s*/) : []; write(id, { naosaiu: parts.includes(m) ? parts.filter(x => x !== m).join('; ') : (cur ? cur + '; ' + m : m) }); }
   else if (act === 'dd') write(id, { dd: !p.dd });
   else if (act === 'res') write(id, { resolvido: !p.resolvido, resolvidoEm: p.resolvido ? '' : now });
 
@@ -1389,7 +1402,7 @@ $('list').addEventListener('focusout', e => {
   const id = ta.closest('.pt').dataset.id; clearTimeout(S.timers.get(id + '|' + ta.dataset.act)); flush(id, ta.dataset.act, ta.value);
   setTimeout(() => { if (S.dirty.has(id)) { S.dirty.delete(id); const el = document.querySelector(`.pt[data-id="${CSS.escape(id)}"]`); if (el && !el.contains(document.activeElement)) el.outerHTML = card(id, S.pats.get(id)); } }, 50);
 });
-function flush(id, f, v) { const p = S.pats.get(id); if (p && (f === 'falta' || f === 'pend') && (p[f] || '') !== v) write(id, { [f]: v }); }
+function flush(id, f, v) { const p = S.pats.get(id); if (p && (f === 'falta' || f === 'pend' || f === 'naosaiu') && (p[f] || '') !== v) write(id, { [f]: v }); }
 
 /* filtros */
 document.addEventListener('click', e => {
@@ -1413,6 +1426,7 @@ $('build').addEventListener('click', buildDay);
 /* ======================= saídas ======================= */
 const sorted = fn => [...S.pats.values()].filter(p => p.c && fn(p)).sort(bedSort);
 const pline = p => `${p.resolvido ? '✅' : '☐'} ${p.c.bed} - ${L.norm(p.c.name)}: ${String(p.pend).trim().replace(/\s*\n\s*/g, '; ')}`;
+const jline = p => line(p) + (justTxt(p) ? ` — *Por que não saiu:* ${justTxt(p)}` : ' — ⚠️ _sem justificativa_');
 const line = p => `• ${p.c.bed} - ${L.norm(p.c.name)} (${H.vs ? p.c.team + ', ' : ''}${p.c.dias ?? '?'}d)${p.falta ? ' — ' + p.falta.replace(/\s*\n\s*/g, '; ') : ''}${isAlta(p) ? ' ✅ alta' : p.desfecho ? ' → ' + DESF[p.desfecho].toLowerCase() : p.resolvido ? ' ✅ resolvido' : ''}`;
 function headTxt(title) {
   const s = stats(); const dd = S.days.find(d => d.id === S.day)?.date || D.short(S.day);
@@ -1422,7 +1436,7 @@ function waTarde() {
   const out = headTxt(`BATE CENSO ${H.curto.toUpperCase()} · PENDÊNCIAS DA TARDE`);
   const sec = (t, ps) => { if (ps.length) out.push('', `*${t} (${ps.length})*`, ...ps.map(line)); };
   const due = [...S.pats].filter(([id, p]) => p.c && present(p) && dueYest(id) && !isAlta(p) && !p.desfecho).map(([, p]) => p).sort(bedSort);
-  sec(`Previstos em ${D.short(S.yestKey)} para hoje e ainda sem alta`, due);
+  if (due.length) out.push('', `*Previstos em ${D.short(S.yestKey)} para hoje e ainda sem alta (${due.length})*`, ...due.map(jline));
   const dueSet = new Set(due);
   sec('Alta prevista hoje à tarde', sorted(p => p.prev === 'tarde' && !p.desfecho && !dueSet.has(p)));
   sec('Alta em 24h', sorted(p => p.prev === '24h' && !p.desfecho));
@@ -1441,8 +1455,10 @@ function waFim() {
   if (dueAll.length) out.push(`Previstas ontem (${D.short(S.yestKey)}) para hoje: ${dueAll.length} · saíram ${dueAll.filter(p => isAlta(p) || !present(p)).length}`);
   const sec = (t, ps) => { if (ps.length) out.push('', `*${t} (${ps.length})*`, ...ps.map(line)); };
   sec('Altas do dia', sorted(isAlta));
-  sec('Previstas para hoje que não saíram', sorted(p => p.prev === 'tarde' && !p.desfecho));
-  sec(`Previstas em ${D.short(S.yestKey)} para hoje que não saíram`, dueAll.filter(p => present(p) && !isAlta(p) && !p.desfecho && p.prev !== 'tarde'));
+  const naoSairam = dueAll.filter(p => present(p) && !isAlta(p) && !p.desfecho);
+  const naoSet = new Set(naoSairam);
+  sec('Previstas para hoje que não saíram', sorted(p => p.prev === 'tarde' && !p.desfecho && !naoSet.has(p)));
+  if (naoSairam.length) out.push('', `*Previstas em ${D.short(S.yestKey)} para hoje que não saíram (${naoSairam.length} · justificadas ${naoSairam.filter(justTxt).length})*`, ...naoSairam.map(jline));
   sec('Previsão em 24h', sorted(p => p.prev === '24h' && !p.desfecho));
   ['obito', 'uti', 'outra'].forEach(v => sec(DESF[v], sorted(p => p.desfecho === v)));
   const pd = sorted(p => hasPend(p)), pr = pd.filter(p => p.resolvido).length;
@@ -1498,8 +1514,8 @@ function report(onlyRp) {
 $('repCorp').addEventListener('click', () => copyFresh(() => report(true)));
 $('repGest').addEventListener('click', () => copyFresh(() => report(false)));
 
-const COLS = ['Posto', 'Leito', 'Paciente', 'Convênio', 'RP/VS', 'Dias', 'Equipe', 'Diagnóstico', 'Médico', 'Previsão', 'O que falta / motivo', 'Pendências do dia', 'Pendência', 'Desfecho', 'DD/DHD', 'No censo'];
-const rowOf = p => [p.c.unit, p.c.bed, p.c.name, p.c.conv, p.c.team, p.c.dias ?? '', p.c.spec, (p.c.diag || '').replace(/\n/g, ' '), p.c.visitador || '', PREV[p.prev] || 'Não discutido', p.falta || '', p.pend || '', p.resolvido ? 'Resolvida' : (openPend(p) ? 'Aberta' : ''), p.desfecho ? DESF[p.desfecho] + ' ' + D.hm(p.desfechoEm) : '', p.dd ? 'Sim' : '', present(p) ? 'Sim' : 'Não'];
+const COLS = ['Posto', 'Leito', 'Paciente', 'Convênio', 'RP/VS', 'Dias', 'Equipe', 'Diagnóstico', 'Médico', 'Previsão', 'O que falta / motivo', 'Pendências do dia', 'Pendência', 'Desfecho', 'DD/DHD', 'No censo', 'Por que não saiu (alta prevista ontem)'];
+const rowOf = p => [p.c.unit, p.c.bed, p.c.name, p.c.conv, p.c.team, p.c.dias ?? '', p.c.spec, (p.c.diag || '').replace(/\n/g, ' '), p.c.visitador || '', PREV[p.prev] || 'Não discutido', p.falta || '', p.pend || '', p.resolvido ? 'Resolvida' : (openPend(p) ? 'Aberta' : ''), p.desfecho ? DESF[p.desfecho] + ' ' + D.hm(p.desfechoEm) : '', p.dd ? 'Sim' : '', present(p) ? 'Sim' : 'Não', p.naosaiu || ''];
 function buildXlsx() {
   const s = stats(), wb = XLSX.utils.book_new();
   const head = [[`Bate censo ${H.nome} — ${S.days.find(d => d.id === S.day)?.date || ''}`], [`Internados ${s.total} · RP ${s.rp} · VS ${s.vs} · RP acima de 3 dias ${s.long} · Alta efetivada ${s.efetivada} · Hoje à tarde ${s.tarde} · Em 24h ${s.h24} · Sem previsão ${s.sem} · Altas do dia ${s.altas}`], [], COLS]; head[1][0] = nv(head[1][0]);
@@ -1527,7 +1543,7 @@ function buildPdf() {
     if (y > H - 30) { doc.addPage(); y = M; }
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...ink); doc.text(`Posto ${u} — ${ps.length} pacientes`, M, y + 4); y += 6.5; drawHead();
     for (const p of ps) {
-      const r = [p.c.bed, p.c.name, p.c.conv + ' (' + p.c.team + ')', String(p.c.dias ?? ''), p.c.spec, PREV[p.prev] || '—', p.falta || '', p.pend || '', [p.desfecho ? DESF[p.desfecho] + ' ' + D.hm(p.desfechoEm) : present(p) ? '' : 'Fora do censo', p.dd ? 'DD/DHD' : '', p.resolvido ? 'Pend. resolvida' : openPend(p) ? 'Pend. aberta' : ''].filter(Boolean).join(' · ')];
+      const r = [p.c.bed, p.c.name, p.c.conv + ' (' + p.c.team + ')', String(p.c.dias ?? ''), p.c.spec, PREV[p.prev] || '—', p.falta || '', p.pend || '', [p.desfecho ? DESF[p.desfecho] + ' ' + D.hm(p.desfechoEm) : present(p) ? '' : 'Fora do censo', p.dd ? 'DD/DHD' : '', p.resolvido ? 'Pend. resolvida' : openPend(p) ? 'Pend. aberta' : '', p.naosaiu ? 'Não saiu: ' + justTxt(p) : ''].filter(Boolean).join(' · ')];
       doc.setFont('helvetica', 'normal'); doc.setFontSize(fs);
       const lines = r.map((v, k) => doc.splitTextToSize(fixT(v), cols[k].w - 2 * pad));
       const h = Math.max(...lines.map(l => l.length)) * lh + 2.2;
