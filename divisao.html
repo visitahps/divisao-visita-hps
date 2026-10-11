@@ -224,6 +224,8 @@ section.board{padding:18px clamp(16px,3vw,32px) 48px;min-width:0}
 .status.err{color:var(--warn)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 @media (prefers-reduced-motion:no-preference){.col{animation:in .25s ease-out both}@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}}
+.hospsel{margin-top:4px;font:inherit;font-size:13px;font-weight:700;border:1px solid var(--line);border-radius:8px;padding:3px 6px;background:var(--card);color:var(--ink)}
+.novs .vsonly,.novs .seg .rp,.novs .seg .vs,.novs .tag.rp,.novs .tag.vs,.novs .col .team{display:none}
 .sitenav{display:flex;gap:4px;background:#EDF1F8;border-radius:999px;padding:3px}
 .sitenav a{padding:6px 14px;border-radius:999px;font-size:14px;font-weight:700;color:#5B6478;text-decoration:none;white-space:nowrap}
 .sitenav a[aria-current=page]{background:#1739AA;color:#FFFFFF}
@@ -656,18 +658,18 @@ gGBAsCCkwGiAQRMsPHbLENbZt+EfEvKSIMFkiBrNrVjx9w0EOR8SSjQOQCUiJnqSSc8aOQuqAoUQWaZg
 BwG06O/wDhk2G9jLFQDOEyCrgDNeDyOkXd7oTw85PHLe5RhJyEuCBFOhjQDoUEOqWUnPAQdMSDHBAarQmKtEnKWikExEhkAmCoKKf9aHfV/q7Vr/VUAJnZRE
 XhIkSDDzvf6M9hXjJFwiKEDQ32qAAEsxFjSNmXAs41CkyzBQ/f8JeUmQYFpYftkD2bJdcoVq+vXq+LVE/lUAnaeERQRtVEUmOldSAmiECD0Adivpo5aHfvbi
 1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span class="sep" aria-hidden="true"></span>
-    <div><h1>Divisão de visita</h1><p class="sub">Hospital Paulo Sacramento · 4A, 4B, 6A e 6B</p></div></div>
-  <nav class="sitenav" id="sitenav" aria-label="Telas"><a href="divisao.html" data-nav="divisao.html" aria-current="page">Divisão</a><a href="bate-censo.html" data-nav="bate-censo.html">Bate censo</a></nav>
+    <div><h1>Divisão de visita</h1><p class="sub">Hospital Paulo Sacramento · 4A, 4B, 6A e 6B</p><select id="hospSel" class="hospsel" hidden aria-label="Hospital"></select></div></div>
+  <nav class="sitenav" id="sitenav" aria-label="Telas"><a href="divisao.html" data-nav="divisao.html" aria-current="page">Divisão</a><a href="bate-censo.html" data-nav="bate-censo.html">Bate censo</a><a href="manual.html" data-nav="manual.html">Manual</a></nav>
   <p class="note">A divisão usa só os leitos ocupados do censo; o kanban classifica CM ou cirúrgico. Os arquivos são lidos só neste navegador e não são enviados para nenhum servidor.</p>
 </header>
 <div class="bar" aria-hidden="true"></div>
 <main>
   <aside class="steps">
     <div class="step" id="s1">
-      <h2><span class="n">1</span>Censos e kanban</h2>
+      <h2><span class="n">1</span><span id="s1t">Censos e kanban</span></h2>
       <label class="drop" id="drop" tabindex="0">
         <input type="file" id="fileIn" multiple accept=".pdf,.xlsx,.xls,.txt" class="sr">
-        <strong>Solte aqui os 4 censos em PDF e o kanban em Excel</strong><br>(e, se quiser, o Excel de divisões anteriores)<br>ou toque para escolher os arquivos
+        <strong id="dropT">Solte aqui os 4 censos em PDF e o kanban em Excel</strong><br>(e, se quiser, o Excel de divisões anteriores)<br>ou toque para escolher os arquivos
       </label>
       <ul class="filelist" id="fileList"></ul>
       <p class="hint" id="memHint"></p>
@@ -691,7 +693,7 @@ XhIkSDDzvf6M9hXjJFwiKEDQ32qAAEsxFjSNmXAs41CkyzBQ/f8JeUmQYFpYftkD2bJdcoVq+vXq+LVE
       <div class="row" style="margin-top:8px">
         <button class="btn" id="addDoc">Adicionar médico</button>
       </div>
-      <p class="hint">Rede própria (RP) atende Notre Dame e Hapvida. Venda de serviço (VS) atende os demais convênios.</p>
+      <p class="hint vsonly">Rede própria (RP) atende Notre Dame e Hapvida. Venda de serviço (VS) atende os demais convênios.</p>
       <div id="prescWrap" hidden>
         <p class="hint">Quem passou visita no censo (toque para incluir na escala):</p>
         <div class="chips" id="presc"></div>
@@ -716,7 +718,30 @@ XhIkSDDzvf6M9hXjJFwiKEDQ32qAAEsxFjSNmXAs41CkyzBQ/f8JeUmQYFpYftkD2bJdcoVq+vXq+LVE
   </section>
 </main>
 <script>
-/* ===== Lógica da divisão de visita HPS (sem DOM) ===== */
+/* ===== hospitais ===== */
+const HOSPS = {
+  hps: { id: 'hps', nome: 'Hospital Paulo Sacramento', curto: 'HPS', titulo: 'HOSPITAL PAULO SACRAMENTO', units: ['4A', '4B', '6A', '6B'], vs: true, kanban: true, hosp: /PAULO SACRAMENTO/,
+    unitOf: t => { const m = t.match(/UI\s*(\d+)\s*ANDAR\s*([A-Z])/i); return m ? m[1] + m[2].toUpperCase() : null; } },
+  hjan: { id: 'hjan', nome: 'Hospital Jardim Anália', curto: 'Anália', titulo: 'HOSPITAL JARDIM ANÁLIA', units: ['4', '5'], vs: false, kanban: false, hosp: /JARDIM ANALIA/,
+    unitOf: t => { const m = t.match(/POSTO:\s*\S+\s*-\s*POSTO\s+(\d+)\s*-/i); return m && ['4', '5'].includes(m[1]) ? m[1] : null; } }
+};
+Object.values(HOSPS).forEach(h => { h.floors = [...new Set(h.units.map(u => u[0]))]; h.unitsTxt = h.units.length > 1 ? h.units.slice(0, -1).join(', ') + ' e ' + h.units[h.units.length - 1] : h.units.join(''); h.postosTxt = /^\d+$/.test(h.units[0]) ? 'postos ' + h.unitsTxt : h.unitsTxt; });
+const hospOfCode = c => { const p = String(c || '').toLowerCase().split('-')[0]; return HOSPS[p] ? p : null; };
+const hospOfText = t => { const n = String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase(); const h = Object.values(HOSPS).find(h => h.hosp.test(n)); return h ? h.id : null; };
+let H = HOSPS.hps;
+(function () {
+  let id = null;
+  try { id = new URLSearchParams(location.search).get('h'); } catch (e) {}
+  if (!HOSPS[id]) { const m = location.hash.match(/^#(?:c=)?([a-z]+)-[a-z0-9]+$/i); if (m) id = m[1].toLowerCase(); }
+  if (!HOSPS[id]) { try { id = localStorage.getItem('hps-hosp'); } catch (e) {} }
+  if (HOSPS[id]) H = HOSPS[id];
+  try { localStorage.setItem('hps-hosp', H.id); } catch (e) {}
+})();
+const nsKey = k => H.id === 'hps' ? k : k + '-' + H.id;
+function setHosp(id) { if (!HOSPS[id]) return false; H = HOSPS[id]; try { localStorage.setItem('hps-hosp', id); } catch (e) {} return true; }
+/* hospitais conectados neste aparelho (para mostrar a troca) */
+const hospsHere = () => Object.keys(HOSPS).filter(id => { try { const k = id === 'hps' ? 'hps-planilha' : 'hps-planilha-' + id; return !!localStorage.getItem(k); } catch (e) { return false; } });
+/* ===== Lógica da divisão de visita (sem DOM) ===== */
 const L = {};
 L.norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 L.title = s => String(s||'').toLowerCase().replace(/(^|\s)(\S)/g,(m,a,b)=>a+b.toUpperCase()).replace(/\b(Da|De|Do|Das|Dos|E)\b/g,w=>w.toLowerCase());
@@ -737,18 +762,19 @@ L.parseCensus = function (items) {
     rows.get(key).push(it);
   }
   const lines = [...rows.entries()].sort((a, b) => b[0] - a[0]).map(([, r]) => r.sort((a, b) => a.x - b.x));
-  const all = lines.map(r => r.map(i => i.str).join(' ')).join('\n');
-  const um = all.match(/UI\s*(\d+)\s*ANDAR\s*([A-Z])/i);
-  const unit = um ? um[1] + um[2].toUpperCase() : null;
+  let unit = null; const units = [];
   const hdr = lines.find(r => r.some(i => /Paciente/.test(i.str)) && r.some(i => /prescritor/i.test(i.str)));
-  if (!hdr) return { unit, patients: [], error: 'Cabeçalho do censo não encontrado' };
+  if (!hdr) return { unit: null, units, patients: [], error: 'Cabeçalho do censo não encontrado' };
   const hx = re => { const i = hdr.find(i => re.test(i.str)); return i ? i.x : null; };
   const X = { pac: hx(/^Paciente/), id: hx(/^Id$/), proc: hx(/Procedimento/), procEnd: hx(/Dt\/hr Intern/), conv: hx(/Conv/), pct: hx(/^Pct/), med: hx(/prescritor/), dias: hx(/^Dias/) };
   const inR = (x, a, b) => x >= a && x < b;
   const pats = [];
   for (const r of lines) {
+    const lt = r.map(i => i.str).join(' ');
+    if (/POSTO:/i.test(lt)) { unit = H.unitOf(lt); if (unit && !H.units.includes(unit)) unit = null; if (unit && !units.includes(unit)) units.push(unit); continue; }
+    if (!unit) continue;
     const first = r[0]?.str || '';
-    const m = first.match(/^(\d{3})-\S*\s*(.*)$/);
+    const m = first.match(/^(\d{3})(?:-|[A-Z])\S*\s*(.*)$/);
     if (!m) continue;
     if (!r.some(i => /^OCUPADO$/.test(i.str.trim()))) continue;
     const room = m[1], acom = m[2] || '';
@@ -763,7 +789,7 @@ L.parseCensus = function (items) {
     const proc = txt(X.proc - 6, X.procEnd - 4);
     pats.push({ unit, room, bed, atend, name, conv, prescriber: med, proc });
   }
-  return { unit, patients: pats };
+  return { unit: units[0] || null, units, patients: pats };
 };
 
 /* ---------- Kanban (linhas de cada aba: array de arrays) ---------- */
@@ -833,9 +859,9 @@ L.parseDivText = function (txt) {
     const line = raw.replace(/\*/g, '').trim(); if (!line) continue;
     let m = line.match(/DIVIS\S*\s+DE\s+VISITA.*?(\d{2}\/\d{2}\/\d{4})/i);
     if (m) { cur = { date: m[1], rows: [] }; days.push(cur); doc = null; continue; }
-    m = line.match(/^([A-Za-zÀ-ÿ .'-]+?)\s*\((RP|VS)\)\s*[—–·-]+\s*\d+\s*pacientes?/i);
-    if (m && cur) { doc = m[1].trim(); team = m[2].toUpperCase(); continue; }
-    m = line.match(/^(\d{3})(?:-\d)?\s*-\s*(.+?)\s*\((CM|Cir[uú]rgico|Especialidade|Esp\.?)\)/i);
+    m = line.match(/^([A-Za-zÀ-ÿ .'-]+?)\s*(?:\((RP|VS)\))?\s*[—–·-]+\s*\d+\s*pacientes?/i);
+    if (m && cur) { doc = m[1].trim(); team = (m[2] || 'RP').toUpperCase(); continue; }
+    m = line.match(/^(\d{3})(?:-\d|[A-Z])?\s*-\s*(.+?)\s*\((CM|Cir[uú]rgico|Especialidade|Esp\.?)\)/i);
     if (m && cur && doc) cur.rows.push({ doc, team, bed: m[1], name: m[2].replace(/\d+\s*$/, '').trim(), atend: '', group: m[3].toUpperCase() === 'CM' ? 'CM' : 'ESP' });
   }
   return days.filter(d => d.rows.length);
@@ -858,10 +884,10 @@ L.buildPatients = function (census, kb, history) {
     if (!group) {
       const g = L.classifyByProc(p.proc);
       source = 'censo';
-      if (g) { group = g; perfil = 'pelo procedimento: ' + p.proc; notes.push('não achado no kanban; classificado pelo procedimento do censo'); }
-      else { group = 'CM'; perfil = p.proc ? 'procedimento: ' + p.proc : ''; notes.push('não achado no kanban; contado como CM, confira'); }
+      if (g) { group = g; perfil = 'pelo procedimento: ' + p.proc; notes.push(H.kanban ? 'não achado no kanban; classificado pelo procedimento do censo' : 'classificado como cirúrgico pelo procedimento do censo'); }
+      else { group = 'CM'; perfil = p.proc ? 'procedimento: ' + p.proc : ''; if (H.kanban) notes.push('não achado no kanban; contado como CM, confira'); }
     }
-    return { ...p, team: L.RP_CONV.test(L.norm(p.conv)) ? 'RP' : 'VS', group, perfil, classSource: source, notes, floor: p.unit ? p.unit[0] : '?' };
+    return { ...p, team: !H.vs || L.RP_CONV.test(L.norm(p.conv)) ? 'RP' : 'VS', group, perfil, classSource: source, notes, floor: p.unit ? p.unit[0] : '?' };
   });
 };
 
@@ -881,19 +907,19 @@ L.divide = function (patients, docs, history, fixed) {
   const st = docs.map((d, i) => ({ i, ...d, n: 0 }));
   const fl = p => p.floor;
   const docIdx = name => st.findIndex(d => L.docMatches(d.name, name) || L.docMatches(name, d.name));
-  const prefOf = d => { const h = L.h(L.norm(d.name).split(' ')[0]); const x = L.PREF.find(p => p[0] === h); return x ? x[1] : null; };
+  const prefOf = d => { if (H.id !== 'hps') return null; const h = L.h(L.norm(d.name).split(' ')[0]); const x = L.PREF.find(p => p[0] === h); return x ? x[1] : null; };
   const put = (p, i) => { res.assign.set(p, i); st[i].n++; };
   for (const p of patients) { p.cont = null; p.fixedDi = null; p.star = false; }
   // 1. vínculo fixo
   for (const p of patients) {
-    const hp = L.h(L.norm(p.name)), fx = L.FX.find(f => f[0] === hp); if (!fx) continue;
+    const hp = L.h(L.norm(p.name)), fx = (H.id === 'hps' ? L.FX : []).find(f => f[0] === hp); if (!fx) continue;
     const d = st.find(d => L.h(L.norm(d.name).split(' ')[0]) === fx[1]);
     if (d) { p.fixedDi = d.i; put(p, d.i); }
   }
   // regra: médico RP não recebe paciente VS (quando há médico VS no dia)
   const mixed = st.some(d => d.team === 'VS') && st.some(d => d.team === 'RP');
   const bannedFor = p => {
-    const r = L.FXNOT.find(r => r[0] === L.h(L.norm(p.name)));
+    const r = (H.id === 'hps' ? L.FXNOT : []).find(r => r[0] === L.h(L.norm(p.name)));
     const fx = r ? (i => r[1].includes(L.h(L.norm(st[i].name).split(' ')[0]))) : (() => false);
     return mixed && p.team === 'VS' ? (i => st[i].team === 'RP' || fx(i)) : fx;
   };
@@ -961,7 +987,8 @@ L.divide = function (patients, docs, history, fixed) {
   const freeP = () => patients.filter(p => !res.assign.has(p));
   const uc = (i, u) => patients.filter(p => res.assign.get(p) === i && p.unit === u).length;
   const fc = (i, f) => patients.filter(p => res.assign.get(p) === i && fl(p) === f).length;
-  const homeFloor = d => { const f4 = fc(d.i, '4'), f6 = fc(d.i, '6'), pr = prefOf(d); if (f4 === f6) return pr || null; return f4 > f6 ? '4' : '6'; };
+  const FL = H.floors;
+  const homeFloor = d => { const f4 = fc(d.i, FL[0]), f6 = FL[1] ? fc(d.i, FL[1]) : 0, pr = prefOf(d); if (f4 === f6) return pr || null; return f4 > f6 ? FL[0] : FL[1]; };
   for (let g = 0; g < 600; g++) {
     const left = freeP(); if (!left.length) break;
     let best = null;
@@ -1024,18 +1051,42 @@ const pid = p => p.unit + '|' + p.bed + '|' + p.atend + '|' + p.name;
 let caps = { downloads: null, sample: null };
 
 try { pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; } catch (e) {}
-try { const d = JSON.parse(localStorage.getItem('hps-docs') || '[]'); if (Array.isArray(d)) S.docs = d.filter(x => x && typeof x.name === 'string'); } catch (e) {}
-if (!S.docs.length) S.docs = [{ name: '', team: 'RP' }];
-const saveDocs = () => { try { localStorage.setItem('hps-docs', JSON.stringify(S.docs)); } catch (e) {} };
+function loadDocs() {
+  S.docs = [];
+  try { const d = JSON.parse(localStorage.getItem(nsKey('hps-docs')) || '[]'); if (Array.isArray(d)) S.docs = d.filter(x => x && typeof x.name === 'string'); } catch (e) {}
+  if (!H.vs) S.docs.forEach(d => { d.team = 'RP'; });
+  if (!S.docs.length) S.docs = [{ name: '', team: 'RP' }];
+}
+loadDocs();
+const saveDocs = () => { try { localStorage.setItem(nsKey('hps-docs'), JSON.stringify(S.docs)); } catch (e) {} };
 /* memória das divisões: [{date:'dd/mm/aaaa', rows:[{atend,name,bed,doc}]}] */
 const dkey = d => { const m = String(d || '').match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? m[3] + m[2] + m[1] : ''; };
 const dday = d => (String(d || '').match(/\d{2}\/\d{2}\/\d{4}/) || [''])[0];
-S.hist = [];
-try { const h = JSON.parse(localStorage.getItem('hps-historico') || '[]'); if (Array.isArray(h)) S.hist = h.filter(x => x && x.date && Array.isArray(x.rows)); } catch (e) {}
+function loadHist() {
+  S.hist = [];
+  try { const h = JSON.parse(localStorage.getItem(nsKey('hps-historico')) || '[]'); if (Array.isArray(h)) S.hist = h.filter(x => x && x.date && Array.isArray(x.rows)); } catch (e) {}
+}
+loadHist();
+/* troca de hospital: limpa os arquivos e carrega a escala e a memória daquele hospital */
+function applyHosp() {
+  document.title = 'Divisão de visita · ' + H.curto;
+  const sub = document.querySelector('.sub'); if (sub) sub.textContent = H.nome + ' · ' + H.unitsTxt;
+  document.body.classList.toggle('novs', !H.vs);
+  const s1t = document.getElementById('s1t'); if (s1t) s1t.textContent = H.kanban ? 'Censos e kanban' : 'Censo do dia';
+  const dt = document.getElementById('dropT'); if (dt) dt.textContent = H.kanban ? `Solte aqui os ${H.units.length} censos em PDF e o kanban em Excel` : `Solte aqui o censo em PDF (${H.postosTxt})`;
+  const sel = document.getElementById('hospSel');
+  if (sel) { const ids = [...new Set([...hospsHere(), H.id])]; sel.hidden = ids.length < 2; sel.innerHTML = ids.map(id => `<option value="${id}" ${id === H.id ? 'selected' : ''}>${HOSPS[id].nome}</option>`).join(''); }
+}
+function switchHosp(id) {
+  if (!setHosp(id)) return;
+  S.census = {}; S.raw = {}; S.kanban = null; S.kanbanName = ''; S.override = {}; S.assign = null; S.activeDocs = null;
+  loadDocs(); loadHist(); applyHosp();
+  if (typeof clearBoard === 'function') { $('board').innerHTML = emptyHtml(); }
+}
 function putHistory(entry) {
   S.hist = S.hist.filter(h => h.date !== entry.date); S.hist.push(entry);
   S.hist.sort((a, b) => dkey(b.date).localeCompare(dkey(a.date))); S.hist = S.hist.slice(0, 30);
-  try { localStorage.setItem('hps-historico', JSON.stringify(S.hist)); } catch (e) {}
+  try { localStorage.setItem(nsKey('hps-historico'), JSON.stringify(S.hist)); } catch (e) {}
 }
 function saveToday() {
   if (!S.assign || !S.activeDocs) return;
@@ -1053,9 +1104,11 @@ async function saveHandoff() {
   if (window.claude || !S.raw || !window.indexedDB) return;
   try {
     const files = []; for (const f of Object.values(S.raw)) files.push({ name: f.name, type: f.type || '', data: await f.arrayBuffer() });
-    await IDB.set('handoff', { date: dday(S.censusDate), savedAt: new Date().toISOString(), div: waText(), files });
+    await IDB.set(nsKey('handoff'), { hosp: H.id, date: dday(S.censusDate), savedAt: new Date().toISOString(), div: waText(), files });
   } catch (e) {}
 }
+applyHosp();
+document.getElementById('hospSel').addEventListener('change', e => { switchHosp(e.target.value); rebuild(); });
 function histForDivide() {
   const today = dkey(S.censusDate);
   return S.hist.filter(h => !today || dkey(h.date) < today).slice(0, 7).map(h => ({ date: h.date, rows: h.rows.map(r => ({ ...r, nn: L.norm(r.name) })) }));
@@ -1096,26 +1149,26 @@ function renderMem() {
   const n = S.hist.length;
   $('memHint').innerHTML = n ? `Memória: ${n} divis${n > 1 ? 'ões' : 'ão'} salva${n > 1 ? 's' : ''} (${S.hist.slice(0, 5).map(h => esc(h.date.slice(0, 5))).join(', ')}${n > 5 ? '…' : ''}). Pacientes ficam com o mesmo médico dos dias anteriores quando ele está na escala. <button class="btn" id="memClear" style="padding:2px 8px;font-size:12px">Limpar</button>`
     : 'Memória vazia. Cada divisão feita aqui fica salva neste aparelho. Em outro aparelho, solte o Excel de uma divisão anterior ou cole o texto do WhatsApp abaixo.';
-  const b = $('memClear'); if (b) b.onclick = () => { if (confirm('Apagar a memória das divisões deste aparelho?')) { S.hist = []; try { localStorage.removeItem('hps-historico'); } catch (e) {} renderMem(); } };
+  const b = $('memClear'); if (b) b.onclick = () => { if (confirm('Apagar a memória das divisões deste aparelho?')) { S.hist = []; try { localStorage.removeItem(nsKey('hps-historico')); } catch (e) {} renderMem(); } };
 }
 
 /* ---------- arquivos ---------- */
 async function readPdf(file) {
   const buf = new Uint8Array(await file.arrayBuffer());
   const doc = await pdfjsLib.getDocument({ data: buf, isEvalSupported: false, disableFontFace: true }).promise;
-  let unit = null, pats = [], date = '';
+  let unit = null, pats = [], date = '', units = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const tc = await (await doc.getPage(i)).getTextContent();
     const items = tc.items.map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5] }));
     const txt = items.map(i => i.str).join(' ');
     const dm = txt.match(/OCUPACAO HOSPITALAR EM\s*(\d{2}\/\d{2}\/\d{4})/); if (dm && !date) date = dm[1];
     const hm = txt.match(/HORA\s*-\s*(\d{2}:\d{2})/); if (hm && date && !date.includes(' ')) date += ' ' + hm[1];
+    if (i === 1) { const hs = hospOfText(txt); if (hs && hs !== H.id) switchHosp(hs); }
     const r = L.parseCensus(items);
-    unit = unit || r.unit;
-    pats.push(...r.patients.map(p => ({ ...p, unit: p.unit || unit })));
+    unit = unit || r.unit; r.units.forEach(u => { if (!units.includes(u)) units.push(u); });
+    pats.push(...r.patients);
   }
-  pats.forEach(p => { p.unit = p.unit || unit; });
-  return { unit, patients: pats, date };
+  return { unit, units, patients: pats, date };
 }
 async function handleFiles(list) {
   for (const f of list) {
@@ -1123,9 +1176,10 @@ async function handleFiles(list) {
     try {
       if (/\.pdf$/i.test(f.name)) {
         const r = await readPdf(f);
-        if (!r.unit) throw new Error('não reconheci a unidade');
-        S.census[r.unit] = { file: f.name, patients: r.patients };
-        S.raw = S.raw || {}; S.raw[r.unit] = f;
+        if (!r.units.length) throw new Error('não encontrei ' + H.postosTxt + ' neste censo');
+        for (const u of r.units) S.census[u] = { file: f.name, patients: r.patients.filter(p => p.unit === u) };
+        S.raw = S.raw || {}; for (const k of Object.keys(S.raw)) if (k !== 'kanban' && r.units.some(u => k.split('+').includes(u))) delete S.raw[k];
+        S.raw[r.units.join('+')] = f;
         if (r.date) S.censusDate = r.date;
       } else if (/\.txt$/i.test(f.name)) {
         const days = L.parseDivText(await f.text()); days.forEach(putHistory);
@@ -1142,21 +1196,21 @@ async function handleFiles(list) {
   S.assign = null; rebuild();
 }
 function renderFiles() {
-  const units = ['4A', '4B', '6A', '6B'];
+  const units = H.units;
   let h = units.map(u => {
     const c = S.census[u];
     return `<li><span>Censo ${u}${c ? ' <span style="color:var(--muted)">(' + esc(c.file) + ')</span>' : ''}</span>${c ? `<span class="ok">${c.patients.length} pacientes</span>` : '<span class="bad">falta</span>'}</li>`;
   }).join('');
   const extra = Object.keys(S.census).filter(u => !units.includes(u));
-  h += extra.map(u => `<li><span>Censo ${esc(u)}</span><span class="bad">fora das 4 unidades, ignorado</span></li>`).join('');
-  h += `<li><span>Kanban${S.kanbanName ? ' <span style="color:var(--muted)">(' + esc(S.kanbanName) + ')</span>' : ''}</span>${S.kanban ? `<span class="ok">${S.kanban.length} linhas</span>` : '<span class="bad">falta</span>'}</li>`;
+  h += extra.map(u => `<li><span>Censo ${esc(u)}</span><span class="bad">fora dos postos da visita, ignorado</span></li>`).join('');
+  if (H.kanban) h += `<li><span>Kanban${S.kanbanName ? ' <span style="color:var(--muted)">(' + esc(S.kanbanName) + ')</span>' : ''}</span>${S.kanban ? `<span class="ok">${S.kanban.length} linhas</span>` : '<span class="bad">falta</span>'}</li>`;
   $('fileList').innerHTML = h;
-  $('s1').classList.toggle('done', units.every(u => S.census[u]) && !!S.kanban);
+  $('s1').classList.toggle('done', units.every(u => S.census[u]) && (!H.kanban || !!S.kanban));
 }
 
 /* ---------- pacientes ---------- */
 function rebuild() {
-  const census = ['4A', '4B', '6A', '6B'].flatMap(u => S.census[u]?.patients || []);
+  const census = H.units.flatMap(u => S.census[u]?.patients || []);
   S.patients = L.buildPatients(census, S.kanban || [], histForDivide()).map(p => {
     p.id = pid(p);
     if (S.override[p.id]) { p.group = S.override[p.id]; p.manual = true; }
@@ -1266,13 +1320,13 @@ $('review').addEventListener('change', e => {
   S.override[s.dataset.g] = s.value; S.assign = null; clearBoard(); rebuild();
 });
 function updateGo() {
-  const units = ['4A', '4B', '6A', '6B'].filter(u => S.census[u]);
+  const units = H.units.filter(u => S.census[u]);
   const named = S.docs.filter(d => d.name.trim());
   const ok = units.length > 0 && named.length > 0;
   $('go').disabled = !ok;
   if (!units.length) setStatus('goStatus', '');
-  else if (units.length < 4) setStatus('goStatus', `Faltam censos: ${['4A', '4B', '6A', '6B'].filter(u => !S.census[u]).join(', ')}. Dá para dividir assim mesmo.`, true);
-  else if (!S.kanban) setStatus('goStatus', 'Sem kanban, todos contam como CM, exceto procedimentos cirúrgicos do censo.', true);
+  else if (units.length < H.units.length) setStatus('goStatus', `Faltam censos: ${H.units.filter(u => !S.census[u]).join(', ')}. Dá para dividir assim mesmo.`, true);
+  else if (H.kanban && !S.kanban) setStatus('goStatus', 'Sem kanban, todos contam como CM, exceto procedimentos cirúrgicos do censo.', true);
   else setStatus('goStatus', '');
 }
 function setStatus(id, msg, err) { const el = $(id); el.textContent = msg; el.classList.toggle('err', !!err); }
@@ -1299,7 +1353,7 @@ function stats(i) {
   const star = ps.filter(p => L.docMatches(d.name, p.prescriber)).length;
   const cont = ps.filter(p => isCont(p, i)).length;
   return { ps, cm: ps.filter(p => p.group === 'CM').length, esp: ps.filter(p => p.group !== 'CM').length, star, cont,
-    units: [...new Set(ps.map(p => p.unit))].sort(), f4: ps.filter(p => p.floor === '4').length, f6: ps.filter(p => p.floor === '6').length,
+    units: [...new Set(ps.map(p => p.unit))].sort(), f4: ps.filter(p => p.floor === H.floors[0]).length, f6: ps.filter(p => p.floor === H.floors[1]).length,
     rp: ps.filter(p => p.team === 'RP').length, vs: ps.filter(p => p.team === 'VS').length };
 }
 function allNotes() {
@@ -1308,7 +1362,7 @@ function allNotes() {
     const idx = S.activeDocs.map((d, i) => d.team === t ? i : -1).filter(i => i >= 0);
     if (idx.length < 2) continue;
     const e = idx.map(i => stats(i).esp), c = idx.map(i => stats(i).cm);
-    if (Math.max(...e) !== Math.min(...e)) out.regra.push(`Na ${t}, CM ficou ${c.join('/')} e cirúrgicos ${e.join('/')}: quem já acompanhava e andar/posto tiveram prioridade sobre o equilíbrio CM/cirúrgico.`);
+    if (Math.max(...e) !== Math.min(...e)) out.regra.push(`${H.vs ? 'Na ' + t + ', ' : ''}CM ficou ${c.join('/')} e cirúrgicos ${e.join('/')}: quem já acompanhava e andar/posto tiveram prioridade sobre o equilíbrio CM/cirúrgico.`);
   }
   if (S.histUsed && S.histUsed.length) out.regra.unshift(`Memória usada: divisões de ${S.histUsed.join(', ')}.`);
   if (S.moved) out.regra.push(`${S.moved} paciente(s) movido(s) manualmente depois da divisão automática.`);
@@ -1330,7 +1384,7 @@ function renderBoard() {
     const s = stats(i);
     let lastUnit = '', rows = '';
     for (const p of s.ps) {
-      if (p.unit !== lastUnit) { rows += `<div class="floor">${esc(p.unit)}</div>`; lastUnit = p.unit; }
+      if (p.unit !== lastUnit) { rows += `<div class="floor">${/^\d+$/.test(p.unit) ? 'Posto ' : ''}${esc(p.unit)}</div>`; lastUnit = p.unit; }
       const star = L.docMatches(d.name, p.prescriber);
       rows += `<div class="pt"><div class="bed">${esc(p.bed)}</div><div class="who"><div class="n">${esc(L.title(p.name))}</div>
         <div class="m">${esc(p.perfil || '')}${p.perfil ? ' | ' : ''}${esc(L.title(p.conv))}</div>
@@ -1344,7 +1398,7 @@ function renderBoard() {
   const li = a => a.map(x => `<li>${esc(x)}</li>`).join('');
   $('board').innerHTML = `
     <div class="summary"><div><h2>${N} pacientes para ${docs.length} médicos</h2><p>${esc(date)}. Use a lista em cada paciente para mover entre médicos.</p></div>
-      <div class="row" id="exp">${window.claude ? '' : '<a class="btn" style="text-decoration:none;color:var(--brand)" href="bate-censo.html?v=' + Date.now() + '">Abrir bate censo</a>'}<button class="btn" id="xl">Baixar Excel</button><button class="btn" id="pdf">Baixar PDF (planilha)</button></div></div>
+      <div class="row" id="exp">${window.claude ? '' : '<a class="btn" style="text-decoration:none;color:var(--brand)" href="bate-censo.html?h=' + H.id + '&v=' + Date.now() + '">Abrir bate censo</a>'}<button class="btn" id="xl">Baixar Excel</button><button class="btn" id="pdf">Baixar PDF (planilha)</button></div></div>
     <p class="status" id="expStatus"></p>
     <div class="wa"><div class="row" style="justify-content:space-between"><b>Texto para o WhatsApp</b><button class="btn primary" style="width:auto" id="waCopy">Copiar texto</button></div>
       <p class="status" id="waStatus"></p>
@@ -1384,11 +1438,11 @@ function rowsDivisao() {
   return out;
 }
 function waText() {
-  const out = [`*DIVISÃO DE VISITA HPS — ${dday(S.censusDate) || new Date().toLocaleDateString('pt-BR')}*`, ''];
+  const out = [`*DIVISÃO DE VISITA ${H.curto.toUpperCase()} — ${dday(S.censusDate) || new Date().toLocaleDateString('pt-BR')}*`, ''];
   S.activeDocs.forEach((d, i) => {
     const ps = docPatients(i);
-    out.push(`*${L.norm(d.name)}* (${d.team}) — ${ps.length} pacientes`);
-    for (const p of ps) out.push(`${p.room}${p.unit === '4A' ? '-1' : p.unit === '4B' ? '-2' : ''} - ${L.norm(p.name)} (${p.group === 'CM' ? 'CM' : 'Cirúrgico'})`);
+    out.push(`*${L.norm(d.name)}*${H.vs ? ` (${d.team})` : ''} — ${ps.length} pacientes`);
+    for (const p of ps) out.push(`${H.id === 'hps' ? p.room + (p.unit === '4A' ? '-1' : p.unit === '4B' ? '-2' : '') : p.bed} - ${L.norm(p.name)} (${p.group === 'CM' ? 'CM' : 'Cirúrgico'})`);
     out.push('');
   });
   return out.join('\n').trim();
@@ -1400,7 +1454,7 @@ async function copyWa() {
 }
 function buildXlsx() {
   const wb = XLSX.utils.book_new();
-  const head = ['Médico', 'Equipe', 'CM', 'Cirúrgicos', 'Total', 'Já acompanhava', 'Continuidade', 'Unidades', '4º andar', '6º andar', 'Pacientes RP', 'Pacientes VS'];
+  const head = ['Médico', 'Equipe', 'CM', 'Cirúrgicos', 'Total', 'Já acompanhava', 'Continuidade', 'Postos', `${H.floors[0]}º andar`, H.floors[1] ? `${H.floors[1]}º andar` : '', 'Pacientes RP', 'Pacientes VS'];
   const res = [[`Resumo da divisão – ${S.censusDate || ''}`], [], head];
   const tot = [0, 0, 0, 0, 0, 0, 0, 0, 0];
   S.activeDocs.forEach((d, i) => { const s = stats(i); const v = [s.cm, s.esp, s.ps.length, s.star, s.cont, s.f4, s.f6, s.rp, s.vs]; v.forEach((x, k) => tot[k] += x);
@@ -1409,7 +1463,7 @@ function buildXlsx() {
   const ws1 = XLSX.utils.aoa_to_sheet(res); ws1['!cols'] = [26, 8, 6, 14, 7, 15, 13, 16, 9, 9, 12, 12].map(w => ({ wch: w }));
   XLSX.utils.book_append_sheet(wb, ws1, 'Resumo');
   const dh = ['Médico', 'Equipe do médico', 'Unidade', 'Leito', 'Paciente', 'Grupo', 'Perfil / equipe', 'Convênio', 'RP/VS', 'Já acompanhava', 'Origem', 'Observação', 'Atendimento'];
-  const dv = [[`Divisão de pacientes – visita 4A, 4B, 6A e 6B – HPS – ${S.censusDate || ''}`], [], dh,
+  const dv = [[`Divisão de pacientes – visita ${H.unitsTxt} – ${H.nome} – ${S.censusDate || ''}`], [], dh,
     ...rowsDivisao().map(r => [r.med, r.eq, r.unit, r.bed, r.name, r.grupo, r.perfil, r.conv, r.rpvs, r.ja, r.origem, r.obs, r.atend])];
   const nt = allNotes();
   dv.push([], ['NOTAS']);
@@ -1455,9 +1509,9 @@ function buildPdf() {
     const s = stats(i); if (i > 0) doc.addPage(); y = M;
     try { doc.addImage(document.getElementById('logo').src, 'PNG', W - M - 36, M - 3, 36, 36 * 124 / 560); } catch (e) {}
     doc.setFillColor(242, 71, 29); doc.rect(M, M + 11.5, 24, 1, 'F');
-    title(`${d.name} (${d.team}) – ${s.ps.length} pacientes: ${s.cm} CM e ${s.esp} cirúrgicos – ${dday(S.censusDate)}`, 13); y += 3;
-    const rows = docPatients(i).map(p => [p.unit, p.bed, L.title(p.name), p.group === 'CM' ? 'CM' : 'Cirúrgico', p.perfil || '', L.title(p.conv), p.team, jaTxt(p, i).replace('Continuidade', 'Contin.'), p.manual ? 'Manual' : (p.classSource === 'kanban' ? 'Kanban' : p.classSource === 'memória' ? 'Memória' : 'Censo')]);
-    table(dc, rows, (ri, k, v) => k === 3 ? (v === 'CM' ? cmF : esF) : null);
+    title(`${d.name}${H.vs ? ` (${d.team})` : ''} – ${s.ps.length} pacientes: ${s.cm} CM e ${s.esp} cirúrgicos – ${dday(S.censusDate)}`, 13); y += 3;
+    const rows = docPatients(i).map(p => [p.unit, p.bed, L.title(p.name), p.group === 'CM' ? 'CM' : 'Cirúrgico', p.perfil || '', L.title(p.conv), p.team, jaTxt(p, i).replace('Continuidade', 'Contin.'), p.manual ? 'Manual' : (p.classSource === 'kanban' ? 'Kanban' : p.classSource === 'memória' ? 'Memória' : 'Censo')]).map(r => H.vs ? r : r.filter((x, k) => k !== 6));
+    table(H.vs ? dc : dc.filter((x, k) => k !== 6), rows, (ri, k, v) => k === 3 ? (v === 'CM' ? cmF : esF) : null);
   });
   return doc.output('arraybuffer');
 }
@@ -1465,7 +1519,7 @@ async function exportFile(kind) {
   setStatus('expStatus', 'Gerando o arquivo…');
   try {
     const data = kind === 'xlsx' ? buildXlsx() : buildPdf();
-    const filename = `Divisao_Visita_HPS_${fileStamp()}.${kind}`;
+    const filename = `Divisao_Visita_${H.curto.normalize('NFD').replace(/[^A-Za-z]/g, '')}_${fileStamp()}.${kind}`;
     if (STANDALONE) { saveLocal(filename, data); setStatus('expStatus', `${kind === 'xlsx' ? 'Excel' : 'PDF'} baixado.`); return; }
     const dl = caps.downloads || await window.claude.use('downloads');
     if (!dl) { setStatus('expStatus', 'Baixar arquivos não está disponível nesta visualização. Use a versão independente do aplicativo.', true); return; }
@@ -1503,6 +1557,6 @@ $('histToday').onclick = () => {
 rebuild();
 
 </script>
-<script>if (window.claude) { const n = document.getElementById('sitenav'); if (n) n.hidden = true; } else document.querySelectorAll('[data-nav]').forEach(a => { a.addEventListener('click', e => { e.preventDefault(); location.href = a.dataset.nav + '?v=' + Date.now(); }); });</script>
+<script>if (window.claude) { const n = document.getElementById('sitenav'); if (n) n.hidden = true; } else document.querySelectorAll('[data-nav]').forEach(a => { a.addEventListener('click', e => { e.preventDefault(); location.href = a.dataset.nav + '?h=' + H.id + '&v=' + Date.now(); }); });</script>
 </body>
 </html>

@@ -122,18 +122,24 @@ a{display:block;margin:8px 0;padding:12px 18px;border-radius:10px;background:var
 <script>
 (async function () {
   var d = new Date(), k = '' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
-  var cfg = null, bc = false;
+  var cfg = null, bc = false, HS = ['hps', 'hjan'], hosp = null;
+  var URL0 = 'https://script.google.com/macros/s/AKfycbxkGguEX2yO0-5BY8Fkt8XiumbxyW7xmHRL9-Bqr2X1UxhlPirm34OSDXAn4FSCNvD7mQ/exec';
+  var m = location.hash.match(/^#(?:c=)?(([a-z]+)-[a-z0-9]+)$/i);
+  if (m && HS.indexOf(m[2].toLowerCase()) >= 0) hosp = m[2].toLowerCase();
+  if (!hosp) { try { hosp = localStorage.getItem('hps-hosp'); } catch (e) {} }
+  if (HS.indexOf(hosp) < 0) hosp = 'hps';
+  var KEY = hosp === 'hps' ? 'hps-planilha' : 'hps-planilha-' + hosp, LKEY = hosp === 'hps' ? 'hps-bate-censo-v1' : 'hps-bate-censo-v1-' + hosp;
   try {
-    var m = location.hash.match(/^#(?:c=)?(hps-[a-z0-9]+)$/i);
-    if (m) localStorage.setItem('hps-planilha', JSON.stringify({ u: 'https://script.google.com/macros/s/AKfycbxkGguEX2yO0-5BY8Fkt8XiumbxyW7xmHRL9-Bqr2X1UxhlPirm34OSDXAn4FSCNvD7mQ/exec', c: m[1] }));
+    localStorage.setItem('hps-hosp', hosp);
+    if (m && HS.indexOf(m[2].toLowerCase()) >= 0) localStorage.setItem(KEY, JSON.stringify({ u: URL0, c: m[1] }));
     else if (location.hash.indexOf('#p=') === 0) {
       var t = location.hash.slice(3).replace(/-/g, '+').replace(/_/g, '/');
       cfg = JSON.parse(decodeURIComponent(escape(atob(t))));
-      if (cfg && cfg.u && cfg.c) localStorage.setItem('hps-planilha', JSON.stringify({ u: cfg.u, c: cfg.c }));
+      if (cfg && cfg.u && cfg.c) localStorage.setItem(KEY, JSON.stringify({ u: cfg.u, c: cfg.c }));
     }
   } catch (e) {}
-  try { cfg = JSON.parse(localStorage.getItem('hps-planilha') || 'null'); } catch (e) {}
-  try { var x = JSON.parse(localStorage.getItem('hps-bate-censo-v1') || '{}'); bc = !!(x.days && x.days[k]); } catch (e) {}
+  try { cfg = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+  try { var x = JSON.parse(localStorage.getItem(LKEY) || '{}'); bc = !!(x.days && x.days[k]); } catch (e) {}
   if (cfg && cfg.u && cfg.c) {
     bc = false;
     try {
@@ -142,7 +148,7 @@ a{display:block;margin:8px 0;padding:12px 18px;border-radius:10px;background:var
       var j = await r.json(); bc = !!(j.ok && (j.days || []).some(function (z) { return String(z.id) === k; }));
     } catch (e) {}
   }
-  location.replace((bc ? 'bate-censo.html' : 'divisao.html') + '?v=' + Date.now());
+  location.replace((bc ? 'bate-censo.html' : 'divisao.html') + '?h=' + hosp + '&v=' + Date.now());
 })();
 </script>
 </body>

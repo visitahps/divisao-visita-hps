@@ -217,6 +217,8 @@ textarea.divtxt{width:100%;border:1px solid var(--line);border-radius:8px;paddin
 .days.d4{background:var(--d4-soft);color:var(--d4)}.days.long{background:var(--long);color:var(--card)}
 .clin{margin:0;font-size:13px;overflow-wrap:anywhere}
 .clin b{font-weight:700}
+.hospsel{margin-top:4px;font:inherit;font-size:13px;font-weight:700;border:1px solid var(--line);border-radius:8px;padding:3px 6px;background:var(--card);color:var(--ink)}
+.novs .vsonly{display:none}body:not(.novs) .novsonly{display:none}
 .yest{font-size:12.5px;background:var(--soft);border-radius:6px;padding:4px 8px;overflow-wrap:anywhere}
 .yest.due{background:var(--pm-soft);color:var(--ink);border-left:3px solid var(--pm)}
 .lembrete{background:var(--pm-soft);border:1px solid var(--pm);border-radius:12px;padding:12px 14px;margin-bottom:12px}
@@ -697,8 +699,8 @@ X+BwPZKzHMjyCrjAWwyIIRgGBAsCCkwGiAQRMsPHbLENbZt+EfEvKSIMFkiBrNrVjx9w0EOR8SSjQOQC
 drom8JEiSYEeyZeFNVEkMjBwG06O/wDhk2G9jLFQDOEyCrgDNeDyOkXd7oTw85PHLe5RhJyEuCBFOhjQDoUEOqWUnPAQdMSDHBAarQmKtEnKWikExEhkAmCo
 KKf9aHfV/q7Vr/VUAJnZREXhIkSDDzvf6M9hXjJFwiKEDQ32qAAEsxFjSNmXAs41CkyzBQ/f8JeUmQYFpYftkD2bJdcoVq+vXq+LVE/lUAnaeERQRtVEUmOl
 dSAmiECD0Adivpo5aHfvbi1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span class="sep" aria-hidden="true"></span>
-    <div><h1>Bate censo</h1><p class="sub">Hospital Paulo Sacramento · 4A, 4B, 6A e 6B</p></div></div>
-  <nav class="sitenav" id="sitenav" aria-label="Telas"><a href="divisao.html" data-nav="divisao.html">Divisão</a><a href="bate-censo.html" data-nav="bate-censo.html" aria-current="page">Bate censo</a></nav>
+    <div><h1>Bate censo</h1><p class="sub" id="hospSub">Hospital Paulo Sacramento · 4A, 4B, 6A e 6B</p><select id="hospSel" class="hospsel" hidden aria-label="Hospital"></select></div></div>
+  <nav class="sitenav" id="sitenav" aria-label="Telas"><a href="divisao.html" data-nav="divisao.html">Divisão</a><a href="bate-censo.html" data-nav="bate-censo.html" aria-current="page">Bate censo</a><a href="manual.html" data-nav="manual.html">Manual</a></nav>
   <div class="dayctl">
     <label for="daySel" class="sr">Dia</label><select id="daySel" hidden></select>
     <span class="sync" id="sync"><i></i><span id="syncTxt">Conectando…</span></span>
@@ -733,7 +735,7 @@ dSAmiECD0Adivpo5aHfvbi1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span cl
       <div>
         <label class="drop" id="drop" tabindex="0">
           <input type="file" id="fileIn" multiple accept=".pdf,.xlsx,.xls" class="sr">
-          <strong>Solte aqui os 4 censos em PDF e o kanban em Excel</strong><br>ou toque para escolher os arquivos
+          <strong id="dropT">Solte aqui os 4 censos em PDF e o kanban em Excel</strong><br>ou toque para escolher os arquivos
         </label>
         <ul class="filelist" id="fileList"></ul>
       </div>
@@ -762,9 +764,11 @@ dSAmiECD0Adivpo5aHfvbi1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span cl
       <div class="chips" id="fChips"></div>
     </div>
     <div class="legend" style="margin-top:2px">
-      <span><i style="background:var(--long)"></i>RP com mais de 3 dias</span>
-      <span><i style="background:var(--d4)"></i>RP com 3 dias</span>
-      <span>VS não entra na meta de permanência</span>
+      <span class="vsonly"><i style="background:var(--long)"></i>RP com mais de 3 dias</span>
+      <span class="vsonly"><i style="background:var(--d4)"></i>RP com 3 dias</span>
+      <span class="novsonly"><i style="background:var(--long)"></i>Mais de 3 dias</span>
+      <span class="novsonly"><i style="background:var(--d4)"></i>3 dias</span>
+      <span class="vsonly">VS não entra na meta de permanência</span>
     </div>
     <section id="list"></section>
     <section class="panel out" id="out">
@@ -772,8 +776,8 @@ dSAmiECD0Adivpo5aHfvbi1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span cl
       <div class="row">
         <button class="btn primary" id="waTarde">Copiar pendências da tarde</button>
         <button class="btn" id="waFim">Copiar fechamento do dia</button>
-        <button class="btn primary" id="repCorp">Report corporativo (Notre)</button>
-        <button class="btn" id="repGest">Report gestão de leitos (Notre + VS)</button>
+        <button class="btn primary" id="repCorp">Report corporativo<span class="vsonly"> (Notre)</span></button>
+        <button class="btn vsonly" id="repGest">Report gestão de leitos (Notre + VS)</button>
         <button class="btn" id="pdfBtn">Baixar PDF</button>
         <button class="btn" id="xlBtn">Baixar Excel</button>
       </div>
@@ -788,6 +792,31 @@ dSAmiECD0Adivpo5aHfvbi1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span cl
 </div>
 
 <script>
+/* ===== hospitais ===== */
+const HOSPS = {
+  hps: { id: 'hps', nome: 'Hospital Paulo Sacramento', curto: 'HPS', titulo: 'HOSPITAL PAULO SACRAMENTO', units: ['4A', '4B', '6A', '6B'], vs: true, kanban: true, hosp: /PAULO SACRAMENTO/,
+    unitOf: t => { const m = t.match(/UI\s*(\d+)\s*ANDAR\s*([A-Z])/i); return m ? m[1] + m[2].toUpperCase() : null; } },
+  hjan: { id: 'hjan', nome: 'Hospital Jardim Anália', curto: 'Anália', titulo: 'HOSPITAL JARDIM ANÁLIA', units: ['4', '5'], vs: false, kanban: false, hosp: /JARDIM ANALIA/,
+    unitOf: t => { const m = t.match(/POSTO:\s*\S+\s*-\s*POSTO\s+(\d+)\s*-/i); return m && ['4', '5'].includes(m[1]) ? m[1] : null; } }
+};
+Object.values(HOSPS).forEach(h => { h.floors = [...new Set(h.units.map(u => u[0]))]; h.unitsTxt = h.units.length > 1 ? h.units.slice(0, -1).join(', ') + ' e ' + h.units[h.units.length - 1] : h.units.join(''); h.postosTxt = /^\d+$/.test(h.units[0]) ? 'postos ' + h.unitsTxt : h.unitsTxt; });
+const hospOfCode = c => { const p = String(c || '').toLowerCase().split('-')[0]; return HOSPS[p] ? p : null; };
+const hospOfText = t => { const n = String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase(); const h = Object.values(HOSPS).find(h => h.hosp.test(n)); return h ? h.id : null; };
+let H = HOSPS.hps;
+(function () {
+  let id = null;
+  try { id = new URLSearchParams(location.search).get('h'); } catch (e) {}
+  if (!HOSPS[id]) { const m = location.hash.match(/^#(?:c=)?([a-z]+)-[a-z0-9]+$/i); if (m) id = m[1].toLowerCase(); }
+  if (!HOSPS[id]) { try { id = localStorage.getItem('hps-hosp'); } catch (e) {} }
+  if (HOSPS[id]) H = HOSPS[id];
+  try { localStorage.setItem('hps-hosp', H.id); } catch (e) {}
+})();
+const nsKey = k => H.id === 'hps' ? k : k + '-' + H.id;
+function setHosp(id) { if (!HOSPS[id]) return false; H = HOSPS[id]; try { localStorage.setItem('hps-hosp', id); } catch (e) {} return true; }
+/* hospitais conectados neste aparelho (para mostrar a troca) */
+const hospsHere = () => Object.keys(HOSPS).filter(id => { try { const k = id === 'hps' ? 'hps-planilha' : 'hps-planilha-' + id; return !!localStorage.getItem(k); } catch (e) { return false; } });
+/* sem VS: tira RP/VS dos textos */
+const nv = t => H.vs ? t : String(t).replace(/(\d) RP acima/g, '$1 acima').replace(/\s*\(RP \d+ · VS \d+\)/g, '').replace(/ · RP \d+ · VS \d+/g, '').replace(/RP \d+ · VS \d+ · /g, '').replace(/\bRP acima/g, 'Acima').replace(/média RP/g, 'média').replace(/\bRP com/g, 'Com').replace(/ VS não entra na meta de permanência\./g, '');
 /* ======================= leitura de censo e kanban ======================= */
 const L = {};
 L.norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -805,16 +834,17 @@ L.parseCensus = function (items) {
     rows.get(key).push(it);
   }
   const lines = [...rows.entries()].sort((a, b) => b[0] - a[0]).map(([, r]) => r.sort((a, b) => a.x - b.x));
-  const all = lines.map(r => r.map(i => i.str).join(' ')).join('\n');
-  const um = all.match(/UI\s*(\d+)\s*ANDAR\s*([A-Z])/i);
-  const unit = um ? um[1] + um[2].toUpperCase() : null;
+  let unit = null; const units = [];
   const hdr = lines.find(r => r.some(i => /Paciente/.test(i.str)) && r.some(i => /prescritor/i.test(i.str)));
-  if (!hdr) return { unit, patients: [] };
+  if (!hdr) return { unit: null, units, patients: [] };
   const hx = re => { const i = hdr.find(i => re.test(i.str)); return i ? i.x : null; };
   const X = { pac: hx(/^Paciente/), id: hx(/^Id$/), proc: hx(/Procedimento/), procEnd: hx(/Dt\/hr Intern/), conv: hx(/Conv/), pct: hx(/^Pct/), med: hx(/prescritor/), dias: hx(/^Dias/) };
   const pats = [];
   for (const r of lines) {
-    const m = (r[0]?.str || '').match(/^(\d{3})-\S*\s*(.*)$/);
+    const lt = r.map(i => i.str).join(' ');
+    if (/POSTO:/i.test(lt)) { unit = H.unitOf(lt); if (unit && !H.units.includes(unit)) unit = null; if (unit && !units.includes(unit)) units.push(unit); continue; }
+    if (!unit) continue;
+    const m = (r[0]?.str || '').match(/^(\d{3})(?:-|[A-Z])\S*\s*(.*)$/);
     if (!m || !r.some(i => /^OCUPADO$/.test(i.str.trim()))) continue;
     const room = m[1], acom = m[2] || '';
     const leitoNum = (r.find(i => /^\d$/.test(i.str.trim())) || {}).str?.trim() || '1';
@@ -834,7 +864,7 @@ L.parseCensus = function (items) {
     const prevSis = (rowTxt.match(/(\d{2}\/\d{2}\/\d{4})\s*\d{2}:\d{2}/) || [])[1] || '';
     pats.push({ unit, room, bed, atend, name, idade: ageM ? +ageM[1] : null, conv, prescriber: med, proc, dias: dm ? +dm[1] : null, intern, prevSis });
   }
-  return { unit, patients: pats };
+  return { unit: units[0] || null, units, patients: pats };
 };
 
 L.parseKanban = function (sheets) {
@@ -908,9 +938,9 @@ L.parseDivText = function (txt) {
     const line = raw.replace(/\*/g, '').trim(); if (!line) continue;
     let m = line.match(/DIVIS\S*\s+DE\s+VISITA.*?(\d{2}\/\d{2}\/\d{4})/i);
     if (m) { date = date || m[1]; doc = null; continue; }
-    m = line.match(/^([A-Za-zÀ-ÿ .'-]+?)\s*\((RP|VS)\)\s*[—–·-]+\s*\d+\s*pacientes?/i);
+    m = line.match(/^([A-Za-zÀ-ÿ .'-]+?)\s*(?:\((RP|VS)\))?\s*[—–·-]+\s*\d+\s*pacientes?/i);
     if (m) { doc = m[1].trim(); continue; }
-    m = line.match(/^(\d{3})(?:-\d|[AB])?\s*-\s*(.+?)\s*(\((CM|Cir[uú]rgico|Especialidade|Esp\.?)\))?\s*$/i);
+    m = line.match(/^(\d{3})(?:-\d|[A-Z])?\s*-\s*(.+?)\s*(\((CM|Cir[uú]rgico|Especialidade|Esp\.?)\))?\s*$/i);
     if (m && doc) rows.push({ doc, room: m[1], nn: L.norm(m[2]) });
   }
   return { date, rows };
@@ -920,7 +950,7 @@ L.parseDivText = function (txt) {
 /* doc do paciente: { c:{dados do censo e kanban}, presente, prev, falta, resolvido, resolvidoEm, desfecho, desfechoEm, atualizado } */
 const BLANK = { presente: true, prev: '', falta: '', pend: '', resolvido: false, resolvidoEm: '', desfecho: '', desfechoEm: '', atualizado: '' };
 function makeLocal() {
-  const KEY = 'hps-bate-censo-v1'; let data = { days: {} };
+  const KEY = nsKey('hps-bate-censo-v1'); let data = { days: {} };
   try { data = JSON.parse(localStorage.getItem(KEY) || '{"days":{}}'); } catch (e) {}
   const persist = () => { const ks = Object.keys(data.days).sort().reverse(); for (const k of ks.slice(20)) delete data.days[k]; try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {} };
   let dayCb = null, watchCb = null, watchKey = null;
@@ -951,20 +981,20 @@ function makeDb(db) {
 }
 
 /* lista compartilhada numa planilha Google (Apps Script), sem login */
-const CFG_KEY = 'hps-planilha';
+const CFG_KEY = nsKey('hps-planilha');
 const b64e = t => btoa(unescape(encodeURIComponent(t))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const b64d = t => decodeURIComponent(escape(atob(t.replace(/-/g, '+').replace(/_/g, '/'))));
 function loadCfg() { try { const c = JSON.parse(localStorage.getItem(CFG_KEY) || 'null'); return c && c.u && c.c ? c : null; } catch (e) { return null; } }
 function saveCfg(c) { try { c ? localStorage.setItem(CFG_KEY, JSON.stringify(c)) : localStorage.removeItem(CFG_KEY); } catch (e) {} }
 const SHEET_URL = 'https://script.google.com/macros/s/AKfycbxkGguEX2yO0-5BY8Fkt8XiumbxyW7xmHRL9-Bqr2X1UxhlPirm34OSDXAn4FSCNvD7mQ/exec';
 function readInvite() {
-  const h = location.hash, m = h.match(/^#(?:c=)?(hps-[a-z0-9]+)$/i);
-  if (m) saveCfg({ u: SHEET_URL, c: m[1] });
+  const h = location.hash, m = h.match(/^#(?:c=)?([a-z]+-[a-z0-9]+)$/i);
+  if (m && hospOfCode(m[1]) === H.id) saveCfg({ u: SHEET_URL, c: m[1] });
   else if (!h.startsWith('#p=')) return;
   else try { const c = JSON.parse(b64d(h.slice(3))); if (c.u && c.c) saveCfg(c); } catch (e) {}
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
 }
-const teamLink = c => location.origin + location.pathname.replace(/[^/]*$/, '') + (c.u === SHEET_URL && /^hps-[a-z0-9]+$/i.test(c.c) ? '#' + c.c : '#p=' + b64e(JSON.stringify({ u: c.u, c: c.c })));
+const teamLink = c => location.origin + location.pathname.replace(/[^/]*$/, '') + (c.u === SHEET_URL && hospOfCode(c.c) ? '#' + c.c : '#p=' + b64e(JSON.stringify({ u: c.u, c: c.c })));
 function makeSheet(url, code) {
   const call = async (body, get) => {
     const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), get ? 25000 : 45000);
@@ -980,7 +1010,7 @@ function makeSheet(url, code) {
   const merge = (a, b) => { const o = { ...a }; for (const [k, v] of Object.entries(b)) o[k] = v && typeof v === 'object' && !Array.isArray(v) && a[k] && typeof a[k] === 'object' ? merge(a[k], v) : v; return o; };
   let cache = new Map(), dayKey = '', dayCb = null, since = 0, pollT = null, daysCb = null, busy = false;
   let pending = [], flushT = null, waiters = [], inflight = [];
-  const PK = 'hps-bc-fila';
+  const PK = nsKey('hps-bc-fila');
   const savePend = () => { try { const all = inflight.concat(pending); all.length ? localStorage.setItem(PK, JSON.stringify(all)) : localStorage.removeItem(PK); } catch (e) {} };
   try { const old = JSON.parse(localStorage.getItem(PK) || '[]'); if (Array.isArray(old) && old.length) { pending = old.filter(p => p && p.key && p.id); flushT = setTimeout(flush, 1500); } } catch (e) {}
   const queued = (k, id) => pending.some(p => p.key === k && p.id === id) || inflight.some(p => p.key === k && p.id === id);
@@ -1051,7 +1081,7 @@ const S = { store: null, canWrite: true, days: [], day: '', pats: new Map(), yes
   f: 'todos', unit: 'todos', group: 'posto', q: '', dirty: new Set(), timers: new Map() };
 try { const p = JSON.parse(localStorage.getItem('hps-bc-ui') || '{}'); if (p.group) S.group = p.group; } catch (e) {}
 const saveUi = () => { try { localStorage.setItem('hps-bc-ui', JSON.stringify({ group: S.group })); } catch (e) {} };
-const UNITS = ['4A', '4B', '6A', '6B'];
+const UNITS = H.units;
 const PREV = { efetivada: 'Alta efetivada', tarde: 'Hoje à tarde', '24h': 'Em 24h', '48h': 'Em 48h', sem: 'Sem previsão' };
 const DESF = { alta: 'Alta', obito: 'Óbito', uti: 'Transferência para UTI', outra: 'Transferência para outra unidade' };
 const PREV_LONG = { efetivada: 'Alta efetivada no sistema', tarde: 'Alta prevista hoje à tarde', '24h': 'Alta em 24h', '48h': 'Alta em 48h', sem: 'Sem previsão de alta' };
@@ -1079,7 +1109,7 @@ const FILTERS = [
   ['sem', 'Sem previsão', p => p.prev === 'sem'],
   ['pdia', 'Pendências do dia', hasPend],
   ['pend', 'Pendências abertas', openPend],
-  ['long', 'RP com mais de 3 dias', p => present(p) && lng(p)],
+  ['long', H.vs ? 'RP com mais de 3 dias' : 'Mais de 3 dias', p => present(p) && lng(p)],
   ['altas', 'Altas do dia', isAlta],
   ['saiu', 'Saíram do censo', p => !present(p)]
 ];
@@ -1089,23 +1119,23 @@ const fOf = k => FILTERS.find(f => f[0] === k)[2];
 try { pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; } catch (e) {}
 async function readPdf(file) {
   const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, disableFontFace: true }).promise;
-  let unit = null, pats = [], date = '';
+  let unit = null, pats = [], date = '', units = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const tc = await (await doc.getPage(i)).getTextContent();
     const items = tc.items.map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5] }));
     const txt = items.map(i => i.str).join(' ');
     const dm = txt.match(/OCUPACAO HOSPITALAR EM\s*(\d{2}\/\d{2}\/\d{4})/); if (dm && !date) date = dm[1];
-    const r = L.parseCensus(items); unit = unit || r.unit; pats.push(...r.patients);
+    if (i === 1) { const hs = hospOfText(txt); if (hs && hs !== H.id) { const e = new Error(`este censo é do ${HOSPS[hs].nome}. Troque o hospital no topo da tela (ou abra o link da equipe dele)`); e.hosp = hs; throw e; } }
+    const r = L.parseCensus(items); unit = unit || r.unit; r.units.forEach(u => { if (!units.includes(u)) units.push(u); }); pats.push(...r.patients);
   }
-  pats.forEach(p => { p.unit = p.unit || unit; });
-  return { unit, patients: pats, date };
+  return { unit, units, patients: pats, date };
 }
 async function handleFiles(list) {
   for (const f of list) {
     try {
       if (/\.pdf$/i.test(f.name)) {
-        const r = await readPdf(f); if (!r.unit) throw new Error('não reconheci o posto');
-        S.census[r.unit] = { file: f.name, patients: r.patients, date: r.date };
+        const r = await readPdf(f); if (!r.units.length) throw new Error('não encontrei ' + H.postosTxt + ' neste censo');
+        for (const u of r.units) S.census[u] = { file: f.name, patients: r.patients.filter(p => p.unit === u), date: r.date };
       } else if (/\.xlsx?$/i.test(f.name)) {
         const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' });
         const sheets = {}; for (const n of wb.SheetNames) sheets[n] = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: null, raw: false });
@@ -1120,14 +1150,14 @@ function renderFiles() {
   S.censusDate = dates.sort((a, b) => D.key(D.parse(b)).localeCompare(D.key(D.parse(a))))[0] || '';
   const diff = new Set(dates).size > 1;
   let h = UNITS.map(u => { const c = S.census[u]; return `<li><span>Censo ${u}${c ? ' · ' + esc(c.date) : ''}</span>${c ? `<span class="ok">${c.patients.length} pacientes</span>` : '<span class="bad">falta</span>'}</li>`; }).join('');
-  h += `<li><span>Kanban</span>${S.kanban ? `<span class="ok">${S.kanban.length} linhas</span>` : '<span class="bad">opcional, mas recomendado</span>'}</li>`;
+  if (H.kanban) h += `<li><span>Kanban</span>${S.kanban ? `<span class="ok">${S.kanban.length} linhas</span>` : '<span class="bad">opcional, mas recomendado</span>'}</li>`;
   $('fileList').innerHTML = h;
   const n = UNITS.filter(u => S.census[u]).length;
   const k = S.censusDate ? D.key(D.parse(S.censusDate)) : '';
   $('build').disabled = !n || !S.canWrite;
   $('build').textContent = !n ? 'Montar bate censo' : S.days.some(d => d.id === k) ? `Atualizar o censo de ${S.censusDate.slice(0, 5)}` : `Montar bate censo de ${S.censusDate.slice(0, 5)}`;
   if (diff) setStatus('buildStatus', 'Os censos têm datas diferentes. Vou usar a mais recente: ' + S.censusDate + '.', true);
-  else if (n && n < 4) setStatus('buildStatus', `Faltam ${4 - n} censo(s). Dá para montar assim e completar depois.`);
+  else if (n && n < UNITS.length) setStatus('buildStatus', `Faltam ${UNITS.length - n} posto(s). Dá para montar assim e completar depois.`);
 }
 function setStatus(id, msg, err) { const el = $(id); if (!el) return; el.textContent = msg || ''; el.classList.toggle('err', !!err); }
 
@@ -1145,7 +1175,7 @@ async function buildDay() {
   census.forEach((p, ord) => {
     const id = (p.atend || (p.bed + '-' + L.norm(p.name).replace(/\s/g, '-'))).slice(0, 60); seen.add(id);
     const k = L.matchKanban(p, kb);
-    const conv = L.title(p.conv); const team = L.RP_CONV.test(L.norm(p.conv)) ? 'RP' : 'VS';
+    const conv = L.title(p.conv); const team = !H.vs || L.RP_CONV.test(L.norm(p.conv)) ? 'RP' : 'VS';
     let dias = p.dias;
     if (dias == null && p.intern) { const m = p.intern.match(/(\d{2})\/(\d{2})\/(\d{2})/); if (m) dias = Math.round((day - new Date(2000 + +m[3], +m[2] - 1, +m[1])) / 864e5); }
     const nn = L.norm(p.name);
@@ -1257,21 +1287,21 @@ function renderTiles() {
   const s = stats(), fmt = x => x.toLocaleString('pt-BR', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
   const t = (f, cls, k, v, sub) => `<button class="tile ${cls}" data-f="${f}" aria-pressed="${S.f === f}"><span class="k">${k}</span><span class="v">${v}</span><span class="s">${sub}</span></button>`;
   $('tiles').innerHTML = [
-    t('todos', '', 'Internados', s.total, `RP ${s.rp} · VS ${s.vs}`),
-    t('long', 'long', 'RP acima de 3 dias', s.long, `média RP ${fmt(s.media)} dias · meta 3 dias`),
+    t('todos', '', 'Internados', s.total, H.vs ? `RP ${s.rp} · VS ${s.vs}` : `${UNITS.map(u => `${/^\d+$/.test(u) ? 'posto ' : ''}${u}: ${[...S.pats.values()].filter(p => present(p) && p.c?.unit === u).length}`).join(' · ')}`),
+    t('long', 'long', H.vs ? 'RP acima de 3 dias' : 'Acima de 3 dias', s.long, `média${H.vs ? ' RP' : ''} ${fmt(s.media)} dias · meta 3 dias`),
     t('nao', '', 'Não discutidos', s.nao, s.nao ? 'faltam no bate censo' : 'todos discutidos'),
     t('efetivada', 'ok', 'Alta efetivada', s.efetivada, 'já no sistema'),
     t('tarde', 'pm', 'Alta hoje à tarde', s.tarde, `${s.pend} pendência(s) aberta(s)`),
     t('24h', 'h24', 'Alta em 24h', s.h24, 'previsão para amanhã'),
     t('sem', '', 'Sem previsão', s.sem, 'motivo anotado no cartão'),
     t('pend', 'pm', 'Pendências abertas', s.pend, `${s.pdia} do dia anotada(s) · ${s.pdiaRes} resolvida(s)`),
-    t('altas', 'ok', 'Altas do dia', s.altas, `RP ${s.altasRp} · VS ${s.altas - s.altasRp}${s.obitos + s.utis + s.outras ? ` · óbito ${s.obitos} · UTI ${s.utis} · outra unid. ${s.outras}` : ''}`)
+    t('altas', 'ok', 'Altas do dia', s.altas, `${H.vs ? `RP ${s.altasRp} · VS ${s.altas - s.altasRp}` : 'efetivadas hoje'}${s.obitos + s.utis + s.outras ? ` · óbito ${s.obitos} · UTI ${s.utis} · outra unid. ${s.outras}` : ''}`)
   ].join('');
 }
 function renderChips() {
   const all = [...S.pats.values()], ent = [...S.pats];
   $('fChips').innerHTML = FILTERS.filter(([k]) => (k !== 'saiu' || all.some(p => !present(p))) && (k !== 'ontem' || S.yest.size)).map(([k, lab, fn]) => `<button class="chip" data-f="${k}" aria-pressed="${S.f === k}">${lab}<b>${ent.filter(([id, p]) => fn(p, id)).length}</b></button>`).join('');
-  $('unitChips').innerHTML = ['todos', ...UNITS].map(u => `<button class="chip" data-u="${u}" aria-pressed="${S.unit === u}">${u === 'todos' ? 'Todos os postos' : u}</button>`).join('');
+  $('unitChips').innerHTML = ['todos', ...UNITS].map(u => `<button class="chip" data-u="${u}" aria-pressed="${S.unit === u}">${u === 'todos' ? 'Todos os postos' : (/^\d+$/.test(u) ? 'Posto ' : '') + u}</button>`).join('');
   document.querySelectorAll('.seg [data-g]').forEach(b => b.setAttribute('aria-pressed', b.dataset.g === S.group));
 }
 const bedSort = (a, b) => UNITS.indexOf(a.c.unit) - UNITS.indexOf(b.c.unit) || String(a.c.bed).localeCompare(String(b.c.bed), 'pt', { numeric: true });
@@ -1294,7 +1324,7 @@ function renderList(full) {
   $('list').innerHTML = order.map(g => {
     const ps = groups.get(g);
     const rp = ps.filter(([, p]) => p.c.team === 'RP').length, lg = ps.filter(([, p]) => lng(p)).length;
-    return `<section class="group"><h2>${esc(g)} <small>${ps.length} paciente(s) · RP ${rp} · VS ${ps.length - rp}${lg ? ` · ${lg} RP acima de 3 dias` : ''}</small></h2><div class="cards">${ps.map(([id, p]) => card(id, p)).join('')}</div></section>`;
+    return `<section class="group"><h2>${esc(g)} <small>${nv(`${ps.length} paciente(s) · RP ${rp} · VS ${ps.length - rp}${lg ? ` · ${lg} RP acima de 3 dias` : ''}`)}</small></h2><div class="cards">${ps.map(([id, p]) => card(id, p)).join('')}</div></section>`;
   }).join('');
 }
 function card(id, p) {
@@ -1306,7 +1336,7 @@ function card(id, p) {
   const sug = c.sug && !p.prev ? `<div class="sug"><span>Kanban sugere <b>${esc(PREV[c.sug])}</b> · ${esc(c.sugTxt)}</span>${ro ? '' : `<button data-act="sug" data-v="${c.sug}">Usar</button>`}</div>` : '';
   const kb = [['Equipe', c.spec], ['Diagnóstico', c.diag], ['Plano', c.plano], ['Alta (kanban)', c.altaKb], ['Exames e procedimentos', c.exames], ['Pendência multi', c.multi], ['Longa permanência', c.longa], ['Observações', c.obs],
     ['Internação', c.intern], ['Previsão do sistema', c.prevSis], ['Prescreveu ontem', c.prescriber], ['Procedimento', c.proc]].filter(([, v]) => v && !/^(N\/?A|NEGA|S\/?P)$/i.test(String(v).trim()));
-  const meta = [`<span class="tag ${c.team === 'RP' ? 'rp' : 'vs'}">${c.team}</span> ${esc(c.conv)}`, c.idade ? c.idade + ' anos' : '', c.spec ? esc(c.spec) : (c.noKanban ? 'fora do kanban' : ''), S.group !== 'medico' && c.visitador ? 'Visita: ' + esc(c.visitador) : ''].filter(Boolean).join(' · ');
+  const meta = [`${H.vs ? `<span class="tag ${c.team === 'RP' ? 'rp' : 'vs'}">${c.team}</span> ` : ''}${esc(c.conv)}`, c.idade ? c.idade + ' anos' : '', c.spec ? esc(c.spec) : (c.noKanban && H.kanban ? 'fora do kanban' : ''), S.group !== 'medico' && c.visitador ? 'Visita: ' + esc(c.visitador) : ''].filter(Boolean).join(' · ');
   const upd = [p.desfecho && p.desfechoEm ? (p.desfecho === 'alta' ? 'alta' : DESF[p.desfecho].toLowerCase()) + ' às ' + D.hm(p.desfechoEm) : '', p.resolvido && p.resolvidoEm ? 'resolvido às ' + D.hm(p.resolvidoEm) : '', p.atualizado ? 'atualizado às ' + D.hm(p.atualizado) : ''].filter(Boolean)[0] || '';
   return `<article class="${cls}" data-id="${esc(id)}">
     <div class="pt-head"><span class="bed">${esc(c.bed)}</span><div class="who"><div class="n">${esc(c.name)}</div><div class="m">${meta}</div></div><span class="days ${daysCls}" title="Dias de internação">${c.dias ?? '?'} d</span></div>
@@ -1314,7 +1344,7 @@ function card(id, p) {
     ${['obito', 'uti', 'outra'].includes(p.desfecho) ? `<span class="outtag">${esc(DESF[p.desfecho])}</span>` : ''}
     ${!present(p) ? '<div class="yest"><b>Não está no último censo carregado.</b> Se saiu de alta, marque Alta abaixo.</div>' : ''}
     ${yTxt}${sug}
-    ${kb.length ? `<details class="kb"><summary>Kanban e censo</summary><dl>${kb.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl></details>` : ''}
+    ${kb.length ? `<details class="kb"><summary>${H.kanban ? 'Kanban e censo' : 'Dados do censo'}</summary><dl>${kb.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl></details>` : ''}
     <fieldset class="ro" ${ro ? 'disabled' : ''}>
       <div class="prev" role="group" aria-label="Previsão de alta">${Object.entries(PREV).map(([v, lab]) => `<button data-act="prev" data-v="${v}" aria-pressed="${v === 'efetivada' ? isAlta(p) : p.prev === v && !p.desfecho}">${lab}</button>`).join('')}</div>
       <div class="falta"><label for="f-${esc(id)}">${FALTA_LBL[p.prev || '']}</label><textarea id="f-${esc(id)}" data-act="falta" rows="2" placeholder="${p.prev === 'sem' ? 'Ex.: aguarda vaga de UTI, antibiótico até 12/10' : 'Ex.: resultado de eco, parecer da cirurgia, autorização'}">${esc(p.falta)}</textarea></div>
@@ -1383,13 +1413,13 @@ $('build').addEventListener('click', buildDay);
 /* ======================= saídas ======================= */
 const sorted = fn => [...S.pats.values()].filter(p => p.c && fn(p)).sort(bedSort);
 const pline = p => `${p.resolvido ? '✅' : '☐'} ${p.c.bed} - ${L.norm(p.c.name)}: ${String(p.pend).trim().replace(/\s*\n\s*/g, '; ')}`;
-const line = p => `• ${p.c.bed} - ${L.norm(p.c.name)} (${p.c.team}, ${p.c.dias ?? '?'}d)${p.falta ? ' — ' + p.falta.replace(/\s*\n\s*/g, '; ') : ''}${isAlta(p) ? ' ✅ alta' : p.desfecho ? ' → ' + DESF[p.desfecho].toLowerCase() : p.resolvido ? ' ✅ resolvido' : ''}`;
+const line = p => `• ${p.c.bed} - ${L.norm(p.c.name)} (${H.vs ? p.c.team + ', ' : ''}${p.c.dias ?? '?'}d)${p.falta ? ' — ' + p.falta.replace(/\s*\n\s*/g, '; ') : ''}${isAlta(p) ? ' ✅ alta' : p.desfecho ? ' → ' + DESF[p.desfecho].toLowerCase() : p.resolvido ? ' ✅ resolvido' : ''}`;
 function headTxt(title) {
   const s = stats(); const dd = S.days.find(d => d.id === S.day)?.date || D.short(S.day);
-  return [`*${title} — ${dd}*`, `Internados: ${s.total} (RP ${s.rp} · VS ${s.vs}) · RP acima de 3 dias: ${s.long}`];
+  return [`*${title} — ${dd}*`, nv(`Internados: ${s.total} (RP ${s.rp} · VS ${s.vs}) · RP acima de 3 dias: ${s.long}`)];
 }
 function waTarde() {
-  const out = headTxt('BATE CENSO HPS · PENDÊNCIAS DA TARDE');
+  const out = headTxt(`BATE CENSO ${H.curto.toUpperCase()} · PENDÊNCIAS DA TARDE`);
   const sec = (t, ps) => { if (ps.length) out.push('', `*${t} (${ps.length})*`, ...ps.map(line)); };
   const due = [...S.pats].filter(([id, p]) => p.c && present(p) && dueYest(id) && !isAlta(p) && !p.desfecho).map(([, p]) => p).sort(bedSort);
   sec(`Previstos em ${D.short(S.yestKey)} para hoje e ainda sem alta`, due);
@@ -1397,17 +1427,17 @@ function waTarde() {
   sec('Alta prevista hoje à tarde', sorted(p => p.prev === 'tarde' && !p.desfecho && !dueSet.has(p)));
   sec('Alta em 24h', sorted(p => p.prev === '24h' && !p.desfecho));
   sec('Alta efetivada', sorted(isAlta));
-  sec('RP acima de 3 dias sem previsão', sorted(p => present(p) && lng(p) && p.prev === 'sem'));
+  sec(H.vs ? 'RP acima de 3 dias sem previsão' : 'Acima de 3 dias sem previsão', sorted(p => present(p) && lng(p) && p.prev === 'sem'));
   const pd = sorted(p => present(p) && hasPend(p));
   if (pd.length) out.push('', `*Pendências do dia (${pd.length})*`, ...pd.map(pline));
   const nao = stats().nao; if (nao) out.push('', `_${nao} paciente(s) ainda sem discussão no bate censo._`);
   return out.join('\n');
 }
 function waFim() {
-  const s = stats(); const out = headTxt('BATE CENSO HPS · FECHAMENTO DO DIA');
+  const s = stats(); const out = headTxt(`BATE CENSO ${H.curto.toUpperCase()} · FECHAMENTO DO DIA`);
   const prevHoje = sorted(p => p.prev === 'tarde' || (isAlta(p) && p.prevAntes === 'tarde'));
   const dueAll = [...S.pats].filter(([id, p]) => p.c && dueYest(id)).map(([, p]) => p).sort(bedSort);
-  out.push(`Altas do dia: ${s.altas} (RP ${s.altasRp} · VS ${s.altas - s.altasRp})`, `Previstas para hoje à tarde: ${prevHoje.length} · saíram ${prevHoje.filter(isAlta).length}`);
+  out.push(nv(`Altas do dia: ${s.altas} (RP ${s.altasRp} · VS ${s.altas - s.altasRp})`), `Previstas para hoje à tarde: ${prevHoje.length} · saíram ${prevHoje.filter(isAlta).length}`);
   if (dueAll.length) out.push(`Previstas ontem (${D.short(S.yestKey)}) para hoje: ${dueAll.length} · saíram ${dueAll.filter(p => isAlta(p) || !present(p)).length}`);
   const sec = (t, ps) => { if (ps.length) out.push('', `*${t} (${ps.length})*`, ...ps.map(line)); };
   sec('Altas do dia', sorted(isAlta));
@@ -1455,7 +1485,8 @@ function report(onlyRp) {
     const split = onlyRp || !ps.length ? '' : ` (Notre ${ps.filter(p => p.c.team === 'RP').length} · VS ${ps.filter(p => p.c.team !== 'RP').length})`;
     return [`🔹 ${t}: ${ps.length}${split}`, ...ps.map(nm), ''];
   };
-  return [`*REPORT DIÁRIO HOSPITAL PAULO SACRAMENTO – ${dd}*${onlyRp ? '' : ' (Notre + VS)'}`, '',
+  if (!H.vs) onlyRp = true;
+  return [`*REPORT DIÁRIO ${H.titulo} – ${dd}*${onlyRp || !H.vs ? '' : ' (Notre + VS)'}`, '',
     ...sec('ALTAS DO DIA', pick(altaDia)),
     ...sec('PREVISÃO DE ALTAS EM 24H', pick(p => present(p) && !p.desfecho && p.prev === '24h')),
     ...sec('PREVISÃO DE ALTAS EM 48H', pick(p => present(p) && !p.desfecho && p.prev === '48h')),
@@ -1471,7 +1502,7 @@ const COLS = ['Posto', 'Leito', 'Paciente', 'Convênio', 'RP/VS', 'Dias', 'Equip
 const rowOf = p => [p.c.unit, p.c.bed, p.c.name, p.c.conv, p.c.team, p.c.dias ?? '', p.c.spec, (p.c.diag || '').replace(/\n/g, ' '), p.c.visitador || '', PREV[p.prev] || 'Não discutido', p.falta || '', p.pend || '', p.resolvido ? 'Resolvida' : (openPend(p) ? 'Aberta' : ''), p.desfecho ? DESF[p.desfecho] + ' ' + D.hm(p.desfechoEm) : '', p.dd ? 'Sim' : '', present(p) ? 'Sim' : 'Não'];
 function buildXlsx() {
   const s = stats(), wb = XLSX.utils.book_new();
-  const head = [[`Bate censo HPS — ${S.days.find(d => d.id === S.day)?.date || ''}`], [`Internados ${s.total} · RP ${s.rp} · VS ${s.vs} · RP acima de 3 dias ${s.long} · Alta efetivada ${s.efetivada} · Hoje à tarde ${s.tarde} · Em 24h ${s.h24} · Sem previsão ${s.sem} · Altas do dia ${s.altas}`], [], COLS];
+  const head = [[`Bate censo ${H.nome} — ${S.days.find(d => d.id === S.day)?.date || ''}`], [`Internados ${s.total} · RP ${s.rp} · VS ${s.vs} · RP acima de 3 dias ${s.long} · Alta efetivada ${s.efetivada} · Hoje à tarde ${s.tarde} · Em 24h ${s.h24} · Sem previsão ${s.sem} · Altas do dia ${s.altas}`], [], COLS]; head[1][0] = nv(head[1][0]);
   const ws = XLSX.utils.aoa_to_sheet([...head, ...sorted(() => true).map(rowOf)]);
   ws['!cols'] = [6, 7, 32, 16, 6, 6, 22, 34, 18, 16, 40, 40, 10, 22, 8, 8].map(w => ({ wch: w }));
   ws['!autofilter'] = { ref: `A4:P${4 + S.pats.size}` };
@@ -1484,10 +1515,10 @@ function buildPdf() {
   const ink = [20, 33, 90], blue = [23, 57, 170];
   const fixT = t => String(t ?? '').replace(/[^\x00-\xFF•–—]/g, '');
   try { doc.addImage($('logo').src, 'PNG', W - M - 34, M - 3, 34, 34 * 124 / 560); } catch (e) {}
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...ink); doc.text(`Bate censo HPS — ${S.days.find(d => d.id === S.day)?.date || ''}`, M, y + 5); y += 9;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...ink); doc.text(`Bate censo ${H.nome} — ${S.days.find(d => d.id === S.day)?.date || ''}`, M, y + 5); y += 9;
   doc.setFillColor(242, 71, 29); doc.rect(M, y, 24, 1, 'F'); y += 4;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-  doc.text(`Internados ${s.total} (RP ${s.rp} · VS ${s.vs})  ·  RP acima de 3 dias ${s.long}  ·  Alta efetivada ${s.efetivada}  ·  Hoje à tarde ${s.tarde}  ·  Em 24h ${s.h24}  ·  Sem previsão ${s.sem}  ·  Altas do dia ${s.altas}`, M, y + 3); y += 8;
+  doc.text(nv(`Internados ${s.total} (RP ${s.rp} · VS ${s.vs})  ·  RP acima de 3 dias ${s.long}  ·  Alta efetivada ${s.efetivada}  ·  Hoje à tarde ${s.tarde}  ·  Em 24h ${s.h24}  ·  Sem previsão ${s.sem}  ·  Altas do dia ${s.altas}`), M, y + 3); y += 8;
   const cols = [{ h: 'Leito', w: 12 }, { h: 'Paciente', w: 42 }, { h: 'Convênio', w: 22 }, { h: 'Dias', w: 9 }, { h: 'Equipe', w: 28 }, { h: 'Previsão', w: 20 }, { h: 'O que falta / motivo', w: 56 }, { h: 'Pendências do dia', w: 56 }, { h: 'Situação', w: 28 }];
   const fs = 8, lh = 3.5, pad = 1.5;
   const drawHead = () => { doc.setFillColor(...blue); doc.rect(M, y, W - 2 * M, 6.2, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(fs); doc.setTextColor(255, 255, 255); let x = M; for (const c of cols) { doc.text(c.h, x + pad, y + 4.2); x += c.w; } y += 6.2; };
@@ -1510,7 +1541,7 @@ function buildPdf() {
   }
   doc.setFontSize(7.5); doc.setTextColor(91, 100, 120); doc.setFont('helvetica', 'normal');
   if (y > H - M - 4) { doc.addPage(); y = M; }
-  doc.text('Linhas em vermelho: RP com mais de 3 dias de internação. Amarelo: RP com 3 dias. VS não entra na meta de permanência.', M, y + 2);
+  doc.text(nv('Linhas em vermelho: RP com mais de 3 dias de internação. Amarelo: RP com 3 dias. VS não entra na meta de permanência.'), M, y + 2);
   return doc.output('arraybuffer');
 }
 let dlCap = null;
@@ -1518,7 +1549,7 @@ async function exportFile(kind) {
   setStatus('outStatus', 'Gerando o arquivo…');
   try {
     const data = kind === 'xlsx' ? buildXlsx() : buildPdf();
-    const filename = `Bate_Censo_HPS_${S.day.slice(6, 8)}-${S.day.slice(4, 6)}-${S.day.slice(0, 4)}.${kind}`;
+    const filename = `Bate_Censo_${H.curto.normalize('NFD').replace(/[^A-Za-z]/g, '')}_${S.day.slice(6, 8)}-${S.day.slice(4, 6)}-${S.day.slice(0, 4)}.${kind}`;
     if (!window.claude) {
       const url = URL.createObjectURL(new Blob([data], { type: kind === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
       const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
@@ -1538,8 +1569,8 @@ $('xlBtn').addEventListener('click', () => exportFile('xlsx'));
 
 /* levar para a lista compartilhada o que ficou salvo só neste aparelho */
 function offerMigration() {
-  let loc = null; try { loc = JSON.parse(localStorage.getItem('hps-bate-censo-v1') || 'null'); } catch (e) {}
-  let done = []; try { done = JSON.parse(localStorage.getItem('hps-bc-migrado') || '[]'); } catch (e) {}
+  let loc = null; try { loc = JSON.parse(localStorage.getItem(nsKey('hps-bate-censo-v1')) || 'null'); } catch (e) {}
+  let done = []; try { done = JSON.parse(localStorage.getItem(nsKey('hps-bc-migrado')) || '[]'); } catch (e) {}
   const days = Object.entries(loc?.days || {}).filter(([k, d]) => /^\d{8}$/.test(k) && d.pats && Object.keys(d.pats).length && !done.includes(k) && !S.days.some(x => x.id === k))
     .sort((a, b) => b[0].localeCompare(a[0])).slice(0, 3);
   if (!days.length) return false;
@@ -1554,7 +1585,7 @@ function offerMigration() {
         setStatus('migSt', `Enviando ${D.short(k)}…`);
         await S.store.putDay(k, { ...(d.meta || {}), migradoEm: new Date().toISOString() });
         await S.store.putMany(k, Object.entries(d.pats).map(([id, body]) => ({ id, body, isNew: true })), (a, t) => setStatus('migSt', `Enviando ${D.short(k)}… ${a} de ${t}`));
-        done.push(k); try { localStorage.setItem('hps-bc-migrado', JSON.stringify(done)); } catch (e) {}
+        done.push(k); try { localStorage.setItem(nsKey('hps-bc-migrado'), JSON.stringify(done)); } catch (e) {}
       }
       box.innerHTML = `<b>Pronto: ${esc(lab)} agora está na lista compartilhada.</b> Todos com o link da equipe já veem.`;
       openDay(days[0][0]);
@@ -1581,7 +1612,9 @@ $('shSave').addEventListener('click', async () => {
   try {
     const r = await fetch(u + '?' + new URLSearchParams({ op: 'ping', code: c })); const j = await r.json();
     if (!j.ok) { setStatus('shStatus', j.erro === 'codigo' ? 'O código não confere com o da planilha.' : 'A planilha respondeu com erro: ' + j.erro, true); return; }
-    saveCfg({ u, c }); setStatus('shStatus', 'Conectado. Recarregando…'); setTimeout(() => location.reload(), 600);
+    const hc = hospOfCode(c); if (hc && hc !== H.id) setHosp(hc);
+    try { localStorage.setItem(nsKey('hps-planilha'), JSON.stringify({ u, c })); } catch (e) {}
+    setStatus('shStatus', 'Conectado. Recarregando…'); setTimeout(() => { location.href = 'bate-censo.html?h=' + H.id + '&v=' + Date.now(); }, 600);
   } catch (e) { setStatus('shStatus', 'Não consegui falar com a planilha. Confira o endereço e se a implantação está para "Qualquer pessoa".', true); }
 });
 $('shCopy').addEventListener('click', async () => {
@@ -1612,8 +1645,8 @@ const IDB = {
 /* a divisão feita neste aparelho entrega censos, kanban e médicos: monta o bate censo sozinho */
 async function useHandoff() {
   if (window.claude || !window.indexedDB || !S.canWrite || S.store.kind === 'db') return;
-  let h = null; try { h = await IDB.get('handoff'); } catch (e) { return; }
-  if (!h || !h.files?.length || !D.parse(h.date)) return;
+  let h = null; try { h = await IDB.get(nsKey('handoff')); } catch (e) { return; }
+  if (!h || !h.files?.length || !D.parse(h.date) || (h.hosp && h.hosp !== H.id)) return;
   const key = D.key(D.parse(h.date)), day = S.days.find(d => d.id === key);
   if (day && day.censoEm && day.censoEm >= h.savedAt) return;
   const box = $('handoff'); box.hidden = false;
@@ -1623,11 +1656,22 @@ async function useHandoff() {
     await handleFiles(h.files.map(x => new File([x.data], x.name, { type: x.type })));
     $('divTxt').value = h.div || '';
     await buildDay();
-    box.innerHTML = `<b>Bate censo de ${esc(h.date.slice(0, 5))} montado com a divisão feita neste aparelho às ${D.hm(h.savedAt)}.</b> Censos, kanban e médicos já estão aqui. É só preencher na visita.`;
+    box.innerHTML = `<b>Bate censo de ${esc(h.date.slice(0, 5))} montado com a divisão feita neste aparelho às ${D.hm(h.savedAt)}.</b> ${H.kanban ? 'Censos, kanban e médicos' : 'Censo e médicos'} já estão aqui. É só preencher na visita.`;
   } catch (e) { box.innerHTML = 'Não consegui usar a divisão deste aparelho. Carregue os censos e o kanban abaixo.'; }
 }
+function applyHosp() {
+  document.title = 'Bate censo · ' + H.curto;
+  $('hospSub').textContent = H.nome + ' · ' + H.unitsTxt;
+  document.body.classList.toggle('novs', !H.vs);
+  $('dropT').textContent = H.kanban ? `Solte aqui os ${H.units.length} censos em PDF e o kanban em Excel` : `Solte aqui o censo em PDF (${H.postosTxt})`;
+  const dt = $('divTxt'); if (dt) dt.placeholder = `Cole aqui o texto da divisão que foi para o WhatsApp (*DIVISÃO DE VISITA ${H.curto.toUpperCase()} — dd/mm/aaaa*) para organizar a lista por médico.`;
+  const ids = [...new Set([...hospsHere(), H.id])], sel = $('hospSel');
+  sel.hidden = ids.length < 2 || !!window.claude;
+  sel.innerHTML = ids.map(id => `<option value="${id}" ${id === H.id ? 'selected' : ''}>${esc(HOSPS[id].nome)}</option>`).join('');
+}
+$('hospSel').addEventListener('change', e => { setHosp(e.target.value); location.href = 'bate-censo.html?h=' + e.target.value + '&v=' + Date.now(); });
 async function start() {
-  readInvite();
+  readInvite(); applyHosp();
   let db = null, user = null;
   if (window.claude) { try { [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]); } catch (e) {} }
   if (db) {
@@ -1642,7 +1686,7 @@ async function start() {
   else if (S.store.kind === 'sheet') { for (let t = 0; t < 40 && !S.daysLoaded; t++) await new Promise(r => setTimeout(r, 250)); if (!offerMigration()) useHandoff(); }
 }
 start();
-if (window.claude) $('sitenav').hidden = true; else document.querySelectorAll('[data-nav]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); location.href = a.dataset.nav + '?v=' + Date.now(); }));
+if (window.claude) $('sitenav').hidden = true; else document.querySelectorAll('[data-nav]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); location.href = a.dataset.nav + '?h=' + H.id + '&v=' + Date.now(); }));
 </script>
 
 </body>
