@@ -804,9 +804,16 @@ const HOSPS = {
   hps: { id: 'hps', nome: 'Hospital Paulo Sacramento', curto: 'HPS', titulo: 'HOSPITAL PAULO SACRAMENTO', units: ['4A', '4B', '6A', '6B'], vs: true, kanban: true, hosp: /PAULO SACRAMENTO/,
     unitOf: t => { const m = t.match(/UI\s*(\d+)\s*ANDAR\s*([A-Z])/i); return m ? m[1] + m[2].toUpperCase() : null; } },
   hjan: { id: 'hjan', nome: 'Hospital Jardim Anália', curto: 'Anália', titulo: 'HOSPITAL JARDIM ANÁLIA', units: ['4', '5'], vs: false, kanban: false, hosp: /JARDIM ANALIA/,
-    unitOf: t => { const m = t.match(/POSTO:\s*\S+\s*-\s*POSTO\s+(\d+)\s*-/i); return m && ['4', '5'].includes(m[1]) ? m[1] : null; } }
+    unitOf: t => { const m = t.match(/POSTO:\s*\S+\s*-\s*POSTO\s+(\d+)\s*-/i); return m && ['4', '5'].includes(m[1]) ? m[1] : null; } },
+  hcru: { id: 'hcru', nome: 'Hospital Cruzeiro do Sul', curto: 'Cruzeiro', titulo: 'HOSPITAL CRUZEIRO DO SUL', units: ['1A', '1B', 'Int', '6A', '7A'], vs: true, kanban: false, hosp: /CRUZEIRO DO SUL/,
+    fl: u => u === 'Int' ? '1' : String(u)[0],
+    unitOf: t => ({ '6981A0': '1A', '6981B0': '1B', '6981A1': 'Int', '6986A0': '6A', '6987A0': '7A' })[((t.match(/POSTO:\s*(\S+)/i) || [])[1] || '').toUpperCase()] || null },
+  hbos: { id: 'hbos', nome: 'Hospital Bosque da Saúde', curto: 'Bosque', titulo: 'HOSPITAL BOSQUE DA SAÚDE', units: ['5A', '6A', '7A', '8A'], vs: true, kanban: false, hosp: /BOSQUE DA SAUDE/,
+    unitOf: t => ({ '7365A0': '5A', '7366A0': '6A', '7367A0': '7A', '7368A0': '8A' })[((t.match(/POSTO:\s*(\S+)/i) || [])[1] || '').toUpperCase()] || null },
+  hros: { id: 'hros', nome: 'Hospital N. Sra. do Rosário', curto: 'Rosário', titulo: 'HOSPITAL NOSSA SENHORA DO ROSÁRIO', units: ['4', '5', '6'], vs: false, kanban: false, hosp: /SRA ROSARIO|SENHORA DO ROSARIO/,
+    unitOf: t => ({ '7184A0': '4', '7185A0': '5', '7186A0': '6' })[((t.match(/POSTO:\s*(\S+)/i) || [])[1] || '').toUpperCase()] || null }
 };
-Object.values(HOSPS).forEach(h => { h.floors = [...new Set(h.units.map(u => u[0]))]; h.unitsTxt = h.units.length > 1 ? h.units.slice(0, -1).join(', ') + ' e ' + h.units[h.units.length - 1] : h.units.join(''); h.postosTxt = /^\d+$/.test(h.units[0]) ? 'postos ' + h.unitsTxt : h.unitsTxt; });
+Object.values(HOSPS).forEach(h => { h.fl = h.fl || (u => String(u)[0]); h.floors = [...new Set(h.units.map(h.fl))]; h.unitsTxt = h.units.length > 1 ? h.units.slice(0, -1).join(', ') + ' e ' + h.units[h.units.length - 1] : h.units.join(''); h.postosTxt = /^\d+$/.test(h.units[0]) ? 'postos ' + h.unitsTxt : h.unitsTxt; });
 const hospOfCode = c => { const p = String(c || '').toLowerCase().split('-')[0]; return HOSPS[p] ? p : null; };
 const hospOfText = t => { const n = String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase(); const h = Object.values(HOSPS).find(h => h.hosp.test(n)); return h ? h.id : null; };
 let H = HOSPS.hps;
@@ -851,7 +858,7 @@ L.parseCensus = function (items) {
     const lt = r.map(i => i.str).join(' ');
     if (/POSTO:/i.test(lt)) { unit = H.unitOf(lt); if (unit && !H.units.includes(unit)) unit = null; if (unit && !units.includes(unit)) units.push(unit); continue; }
     if (!unit) continue;
-    const m = (r[0]?.str || '').match(/^(\d{3})(?:-|[A-Z])\S*\s*(.*)$/);
+    const m = (r[0]?.str || '').match(/^(\d{3})(?:-|[A-Z]|\d)\S*\s*(.*)$/);
     if (!m || !r.some(i => /^OCUPADO$/.test(i.str.trim()))) continue;
     const room = m[1], acom = m[2] || '';
     const leitoNum = (r.find(i => /^\d$/.test(i.str.trim())) || {}).str?.trim() || '1';

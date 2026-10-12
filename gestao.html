@@ -760,10 +760,11 @@ const HOSPS = {
           postos: ['7614A0', '7614B0', '7616A0', '7616B0'], label: l => (l.match(/UI\s*(\d+)\s*ANDAR\s*([A-Z])\b/) || []).slice(1).join('') || l },
   hjan: { id: 'hjan', nome: 'Hospital Jardim Anália', curto: 'Anália', un: '894', re: /JARDIM ANALIA/, vs: false, bc: true,
           postos: ['8944A0', '8945A0'], label: l => (l.match(/^POSTO\s+(\d+)$/) || [])[1] || l },
-  hcru: { id: 'hcru', nome: 'Hospital Cruzeiro do Sul', curto: 'Cruzeiro', re: /CRUZEIRO/, vs: true, bc: false, postos: null },
-  hbos: { id: 'hbos', nome: 'Hospital Bosque da Saúde', curto: 'Bosque', un: '736', re: /BOSQUE/, vs: true, bc: false,
+  hcru: { id: 'hcru', nome: 'Hospital Cruzeiro do Sul', curto: 'Cruzeiro', un: '698', re: /CRUZEIRO/, vs: true, bc: true,
+          postos: ['6981A0', '6981B0', '6986A0', '6987A0', '6981A1'], label: l => /INTERMEDIARIO/.test(l) ? 'Intermediário' : (l.match(/^POSTO\s+(\w+)$/) || [])[1] || l },
+  hbos: { id: 'hbos', nome: 'Hospital Bosque da Saúde', curto: 'Bosque', un: '736', re: /BOSQUE/, vs: true, bc: true,
           postos: ['7365A0', '7366A0', '7367A0', '7368A0'], label: l => (l.match(/^POSTO\s+(\w+)$/) || [])[1] || l },
-  hros: { id: 'hros', nome: 'Hospital N. Sra. do Rosário', curto: 'Rosário', un: '718', re: /ROSARIO/, vs: false, bc: false,
+  hros: { id: 'hros', nome: 'Hospital N. Sra. do Rosário', curto: 'Rosário', un: '718', re: /ROSARIO/, vs: false, bc: true,
           postos: ['7184A0', '7185A0', '7186A0'], label: l => ((l.match(/(\d+)\s*ANDAR/) || [])[1] || l) + (/\d+\s*ANDAR/.test(l) ? 'º andar' : '') }
 };
 const HIDS = Object.keys(HOSPS);
@@ -872,7 +873,7 @@ function parsePage(items) {
     const pm = lt.match(/POSTO:\s*(\S+)\s*-\s*(.+)$/i);
     if (pm) { const label = norm(pm[2].replace(/\s*-\s*[A-Z]{2,5}\s*$/, '')); posto = pm[1].toUpperCase(); out.postos[posto] = out.postos[posto] || { label, n: 0 }; continue; }
     if (!posto) continue;
-    const m = (r[0]?.str || '').match(/^(\d{3})(?:-|[A-Z])\S*\s*(.*)$/);
+    const m = (r[0]?.str || '').match(/^(\d{3})(?:-|[A-Z]|\d)\S*\s*(.*)$/);
     if (!m || !r.some(i => /^OCUPADO$/.test(i.str.trim()))) continue;
     const room = m[1], acom = m[2] || '';
     const leitoNum = (r.find(i => /^\d$/.test(i.str.trim())) || {}).str?.trim() || '1';

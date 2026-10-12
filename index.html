@@ -122,7 +122,7 @@ a{display:block;margin:8px 0;padding:12px 18px;border-radius:10px;background:var
 <script>
 (async function () {
   var d = new Date(), k = '' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
-  var cfg = null, bc = false, HS = ['hps', 'hjan'], hosp = null;
+  var cfg = null, bc = false, HS = ['hps', 'hjan', 'hcru', 'hbos', 'hros'], hosp = null;
   var URL0 = 'https://script.google.com/macros/s/AKfycbxkGguEX2yO0-5BY8Fkt8XiumbxyW7xmHRL9-Bqr2X1UxhlPirm34OSDXAn4FSCNvD7mQ/exec';
   var m = location.hash.match(/^#(?:c=)?(([a-z]+)-[a-z0-9]+)$/i);
   if (m && HS.indexOf(m[2].toLowerCase()) >= 0) hosp = m[2].toLowerCase();

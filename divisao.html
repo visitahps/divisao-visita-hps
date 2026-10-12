@@ -723,9 +723,16 @@ const HOSPS = {
   hps: { id: 'hps', nome: 'Hospital Paulo Sacramento', curto: 'HPS', titulo: 'HOSPITAL PAULO SACRAMENTO', units: ['4A', '4B', '6A', '6B'], vs: true, kanban: true, hosp: /PAULO SACRAMENTO/,
     unitOf: t => { const m = t.match(/UI\s*(\d+)\s*ANDAR\s*([A-Z])/i); return m ? m[1] + m[2].toUpperCase() : null; } },
   hjan: { id: 'hjan', nome: 'Hospital Jardim Anália', curto: 'Anália', titulo: 'HOSPITAL JARDIM ANÁLIA', units: ['4', '5'], vs: false, kanban: false, hosp: /JARDIM ANALIA/,
-    unitOf: t => { const m = t.match(/POSTO:\s*\S+\s*-\s*POSTO\s+(\d+)\s*-/i); return m && ['4', '5'].includes(m[1]) ? m[1] : null; } }
+    unitOf: t => { const m = t.match(/POSTO:\s*\S+\s*-\s*POSTO\s+(\d+)\s*-/i); return m && ['4', '5'].includes(m[1]) ? m[1] : null; } },
+  hcru: { id: 'hcru', nome: 'Hospital Cruzeiro do Sul', curto: 'Cruzeiro', titulo: 'HOSPITAL CRUZEIRO DO SUL', units: ['1A', '1B', 'Int', '6A', '7A'], vs: true, kanban: false, hosp: /CRUZEIRO DO SUL/,
+    fl: u => u === 'Int' ? '1' : String(u)[0],
+    unitOf: t => ({ '6981A0': '1A', '6981B0': '1B', '6981A1': 'Int', '6986A0': '6A', '6987A0': '7A' })[((t.match(/POSTO:\s*(\S+)/i) || [])[1] || '').toUpperCase()] || null },
+  hbos: { id: 'hbos', nome: 'Hospital Bosque da Saúde', curto: 'Bosque', titulo: 'HOSPITAL BOSQUE DA SAÚDE', units: ['5A', '6A', '7A', '8A'], vs: true, kanban: false, hosp: /BOSQUE DA SAUDE/,
+    unitOf: t => ({ '7365A0': '5A', '7366A0': '6A', '7367A0': '7A', '7368A0': '8A' })[((t.match(/POSTO:\s*(\S+)/i) || [])[1] || '').toUpperCase()] || null },
+  hros: { id: 'hros', nome: 'Hospital N. Sra. do Rosário', curto: 'Rosário', titulo: 'HOSPITAL NOSSA SENHORA DO ROSÁRIO', units: ['4', '5', '6'], vs: false, kanban: false, hosp: /SRA ROSARIO|SENHORA DO ROSARIO/,
+    unitOf: t => ({ '7184A0': '4', '7185A0': '5', '7186A0': '6' })[((t.match(/POSTO:\s*(\S+)/i) || [])[1] || '').toUpperCase()] || null }
 };
-Object.values(HOSPS).forEach(h => { h.floors = [...new Set(h.units.map(u => u[0]))]; h.unitsTxt = h.units.length > 1 ? h.units.slice(0, -1).join(', ') + ' e ' + h.units[h.units.length - 1] : h.units.join(''); h.postosTxt = /^\d+$/.test(h.units[0]) ? 'postos ' + h.unitsTxt : h.unitsTxt; });
+Object.values(HOSPS).forEach(h => { h.fl = h.fl || (u => String(u)[0]); h.floors = [...new Set(h.units.map(h.fl))]; h.unitsTxt = h.units.length > 1 ? h.units.slice(0, -1).join(', ') + ' e ' + h.units[h.units.length - 1] : h.units.join(''); h.postosTxt = /^\d+$/.test(h.units[0]) ? 'postos ' + h.unitsTxt : h.unitsTxt; });
 const hospOfCode = c => { const p = String(c || '').toLowerCase().split('-')[0]; return HOSPS[p] ? p : null; };
 const hospOfText = t => { const n = String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase(); const h = Object.values(HOSPS).find(h => h.hosp.test(n)); return h ? h.id : null; };
 let H = HOSPS.hps;
@@ -774,7 +781,7 @@ L.parseCensus = function (items) {
     if (/POSTO:/i.test(lt)) { unit = H.unitOf(lt); if (unit && !H.units.includes(unit)) unit = null; if (unit && !units.includes(unit)) units.push(unit); continue; }
     if (!unit) continue;
     const first = r[0]?.str || '';
-    const m = first.match(/^(\d{3})(?:-|[A-Z])\S*\s*(.*)$/);
+    const m = first.match(/^(\d{3})(?:-|[A-Z]|\d)\S*\s*(.*)$/);
     if (!m) continue;
     if (!r.some(i => /^OCUPADO$/.test(i.str.trim()))) continue;
     const room = m[1], acom = m[2] || '';
@@ -887,7 +894,7 @@ L.buildPatients = function (census, kb, history) {
       if (g) { group = g; perfil = 'pelo procedimento: ' + p.proc; notes.push(H.kanban ? 'não achado no kanban; classificado pelo procedimento do censo' : 'classificado como cirúrgico pelo procedimento do censo'); }
       else { group = 'CM'; perfil = p.proc ? 'procedimento: ' + p.proc : ''; if (H.kanban) notes.push('não achado no kanban; contado como CM, confira'); }
     }
-    return { ...p, team: !H.vs || L.RP_CONV.test(L.norm(p.conv)) ? 'RP' : 'VS', group, perfil, classSource: source, notes, floor: p.unit ? p.unit[0] : '?' };
+    return { ...p, team: !H.vs || L.RP_CONV.test(L.norm(p.conv)) ? 'RP' : 'VS', group, perfil, classSource: source, notes, floor: p.unit ? H.fl(p.unit) : '?' };
   });
 };
 
@@ -988,7 +995,7 @@ L.divide = function (patients, docs, history, fixed) {
   const uc = (i, u) => patients.filter(p => res.assign.get(p) === i && p.unit === u).length;
   const fc = (i, f) => patients.filter(p => res.assign.get(p) === i && fl(p) === f).length;
   const FL = H.floors;
-  const homeFloor = d => { const f4 = fc(d.i, FL[0]), f6 = FL[1] ? fc(d.i, FL[1]) : 0, pr = prefOf(d); if (f4 === f6) return pr || null; return f4 > f6 ? FL[0] : FL[1]; };
+  const homeFloor = d => { const cs = FL.map(f => fc(d.i, f)), mx = Math.max(...cs), pr = prefOf(d); const tops = FL.filter((f, k) => cs[k] === mx); return tops.length > 1 ? (pr && tops.includes(pr) ? pr : null) : tops[0]; };
   for (let g = 0; g < 600; g++) {
     const left = freeP(); if (!left.length) break;
     let best = null;
@@ -997,7 +1004,7 @@ L.divide = function (patients, docs, history, fixed) {
       const hf = homeFloor(d), pr = prefOf(d);
       for (const u of units) {
         const pool = left.filter(p => p.unit === u && !bannedFor(p)(d.i) && !(mixed && d.team === 'VS' && p.team === 'RP' && vsSlack() <= 0)); if (!pool.length) continue;
-        const sc = uc(d.i, u) * 100 + (hf ? (u[0] === hf ? 300 : 0) : (pr && u[0] === pr ? 150 : 0)) + fc(d.i, u[0]) * 10 + Math.min(pool.length, cap) * 2 + cap * 0.1;
+        const sc = uc(d.i, u) * 100 + (hf ? (H.fl(u) === hf ? 300 : 0) : (pr && H.fl(u) === pr ? 150 : 0)) + fc(d.i, H.fl(u)) * 10 + Math.min(pool.length, cap) * 2 + cap * 0.1;
         if (!best || sc > best.sc) best = { sc, d, pool };
       }
     }
@@ -1353,7 +1360,7 @@ function stats(i) {
   const star = ps.filter(p => L.docMatches(d.name, p.prescriber)).length;
   const cont = ps.filter(p => isCont(p, i)).length;
   return { ps, cm: ps.filter(p => p.group === 'CM').length, esp: ps.filter(p => p.group !== 'CM').length, star, cont,
-    units: [...new Set(ps.map(p => p.unit))].sort(), f4: ps.filter(p => p.floor === H.floors[0]).length, f6: ps.filter(p => p.floor === H.floors[1]).length,
+    units: [...new Set(ps.map(p => p.unit))].sort(), fls: H.floors.map(f => ps.filter(p => p.floor === f).length),
     rp: ps.filter(p => p.team === 'RP').length, vs: ps.filter(p => p.team === 'VS').length };
 }
 function allNotes() {
@@ -1454,13 +1461,14 @@ async function copyWa() {
 }
 function buildXlsx() {
   const wb = XLSX.utils.book_new();
-  const head = ['Médico', 'Equipe', 'CM', 'Cirúrgicos', 'Total', 'Já acompanhava', 'Continuidade', 'Postos', `${H.floors[0]}º andar`, H.floors[1] ? `${H.floors[1]}º andar` : '', 'Pacientes RP', 'Pacientes VS'];
+  const NF = H.floors.length;
+  const head = ['Médico', 'Equipe', 'CM', 'Cirúrgicos', 'Total', 'Já acompanhava', 'Continuidade', 'Postos', ...H.floors.map(f => `${f}º andar`), 'Pacientes RP', 'Pacientes VS'];
   const res = [[`Resumo da divisão – ${S.censusDate || ''}`], [], head];
-  const tot = [0, 0, 0, 0, 0, 0, 0, 0, 0];
-  S.activeDocs.forEach((d, i) => { const s = stats(i); const v = [s.cm, s.esp, s.ps.length, s.star, s.cont, s.f4, s.f6, s.rp, s.vs]; v.forEach((x, k) => tot[k] += x);
-    res.push([d.name, d.team, s.cm, s.esp, s.ps.length, s.star, s.cont, s.units.join(', '), s.f4, s.f6, s.rp, s.vs]); });
-  res.push(['Total', '', tot[0], tot[1], tot[2], tot[3], tot[4], '', tot[5], tot[6], tot[7], tot[8]]);
-  const ws1 = XLSX.utils.aoa_to_sheet(res); ws1['!cols'] = [26, 8, 6, 14, 7, 15, 13, 16, 9, 9, 12, 12].map(w => ({ wch: w }));
+  const tot = new Array(7 + NF).fill(0);
+  S.activeDocs.forEach((d, i) => { const s = stats(i); const v = [s.cm, s.esp, s.ps.length, s.star, s.cont, ...s.fls, s.rp, s.vs]; v.forEach((x, k) => tot[k] += x);
+    res.push([d.name, d.team, s.cm, s.esp, s.ps.length, s.star, s.cont, s.units.join(', '), ...s.fls, s.rp, s.vs]); });
+  res.push(['Total', '', ...tot.slice(0, 5), '', ...tot.slice(5)]);
+  const ws1 = XLSX.utils.aoa_to_sheet(res); ws1['!cols'] = [26, 8, 6, 14, 7, 15, 13, 16, ...H.floors.map(() => 9), 12, 12].map(w => ({ wch: w }));
   XLSX.utils.book_append_sheet(wb, ws1, 'Resumo');
   const dh = ['Médico', 'Equipe do médico', 'Unidade', 'Leito', 'Paciente', 'Grupo', 'Perfil / equipe', 'Convênio', 'RP/VS', 'Já acompanhava', 'Origem', 'Observação', 'Atendimento'];
   const dv = [[`Divisão de pacientes – visita ${H.unitsTxt} – ${H.nome} – ${S.censusDate || ''}`], [], dh,
