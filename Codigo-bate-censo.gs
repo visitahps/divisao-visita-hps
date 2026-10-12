@@ -116,6 +116,7 @@ function gestor(p) {
     if (p.op === 'ping') { abaCensos(ss); abaAcoes(ss); return saida({ ok: true, gestor: true }); }
     if (p.op === 'censos') return saida({ ok: true, now: Date.now(), censos: lerCensos(ss, String(p.from || '')) });
     if (p.op === 'acoes') return saida({ ok: true, acoes: lerAcoes(ss) });
+    if (p.op === 'codigos') { const c = {}; Object.keys(CODIGOS).forEach(k => { c[CODIGOS[k] || 'hps'] = k; }); return saida({ ok: true, codigos: c }); }
     if (p.op === 'bc') {
       const s = HOSP_SUF[String(p.hosp)]; if (s === undefined) return saida({ ok: false, erro: 'hosp' });
       return saida({ ok: true, bc: lerBC(ss, s ? 'pacientes ' + s : 'pacientes', String(p.from || '')) });

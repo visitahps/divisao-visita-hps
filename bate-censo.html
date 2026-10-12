@@ -1712,5 +1712,6 @@ start();
 if (window.claude) $('sitenav').hidden = true; else document.querySelectorAll('[data-nav]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); location.href = a.dataset.nav + '?h=' + H.id + '&v=' + Date.now(); }));
 </script>
 
+<script>try { if (localStorage.getItem('hps-gestor')) { const n = document.getElementById('sitenav'); if (n && !n.querySelector('a[href="gestao.html"]')) n.insertAdjacentHTML('beforeend', '<a href="gestao.html">Gestão</a>'); } } catch (e) {}</script>
 </body>
 </html>
