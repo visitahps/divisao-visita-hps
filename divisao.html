@@ -1161,11 +1161,13 @@ function renderMem() {
 
 /* ---------- arquivos ---------- */
 async function readPdf(file) {
+  let hasTxt = false;
   const buf = new Uint8Array(await file.arrayBuffer());
   const doc = await pdfjsLib.getDocument({ data: buf, isEvalSupported: false, disableFontFace: true }).promise;
   let unit = null, pats = [], date = '', units = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const tc = await (await doc.getPage(i)).getTextContent();
+    if (tc.items.some(it => (it.str || '').trim())) hasTxt = true;
     const items = tc.items.map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5] }));
     const txt = items.map(i => i.str).join(' ');
     const dm = txt.match(/OCUPACAO HOSPITALAR EM\s*(\d{2}\/\d{2}\/\d{4})/); if (dm && !date) date = dm[1];
@@ -1175,9 +1177,11 @@ async function readPdf(file) {
     unit = unit || r.unit; r.units.forEach(u => { if (!units.includes(u)) units.push(u); });
     pats.push(...r.patients);
   }
+  if (!hasTxt) throw new Error('este PDF não tem texto: foi salvo como imagem (Microsoft Print to PDF, impressão ou escaneado). Use o arquivo original baixado do sistema, sem imprimir');
   return { unit, units, patients: pats, date };
 }
 async function handleFiles(list) {
+  const errs = [];
   for (const f of list) {
     const li = { name: f.name, ok: false, msg: 'lendo…' };
     try {
@@ -1198,9 +1202,10 @@ async function handleFiles(list) {
         const sheets = {}; for (const n of wb.SheetNames) sheets[n] = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: null, raw: false });
         S.raw = S.raw || {}; S.raw.kanban = f; S.kanban = L.parseKanban(sheets); S.kanbanName = f.name;
       }
-    } catch (e) { setStatus('goStatus', 'Não consegui ler ' + f.name + ': ' + (e.message || e), true); }
+    } catch (e) { errs.push('Não consegui ler ' + f.name + ': ' + (e.message || e)); }
   }
   S.assign = null; rebuild();
+  if (errs.length) setStatus('goStatus', errs.join(' · '), true);
 }
 function renderFiles() {
   const units = H.units;

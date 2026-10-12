@@ -701,7 +701,7 @@ dSAmiECD0Adivpo5aHfvbi1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span cl
   <div class="wrap" style="padding:0">
   <details class="panel load" id="load">
     <summary><span>Censo do dia <small id="loadSum" style="font-weight:600;color:var(--muted);font-size:13px"></small></span><span class="chev">abrir ▾</span></summary>
-    <p class="hint">Carregue <b>todo dia, inclusive fim de semana</b>: as saídas saem da comparação entre um censo e o do dia seguinte. Arraste os PDFs do censo de todos os hospitais de uma vez (um PDF por hospital ou um por posto). O painel reconhece o hospital, separa só os postos de enfermaria e calcula as saídas comparando com o censo anterior.</p>
+    <p class="hint">O censo que a equipe carrega no bate censo entra aqui sozinho. Só arraste aqui o dos hospitais que ainda estiverem "aguardando censo". Precisa ter censo <b>todo dia, inclusive fim de semana</b>: as saídas saem da comparação entre um censo e o do dia seguinte. Arraste os PDFs do censo de todos os hospitais de uma vez (um PDF por hospital ou um por posto). O painel reconhece o hospital, separa só os postos de enfermaria e calcula as saídas comparando com o censo anterior.</p>
     <label class="drop" id="drop" for="fileIn"><strong>Arraste os censos aqui</strong> ou toque para escolher<input class="sr" type="file" id="fileIn" accept=".pdf,application/pdf" multiple></label>
     <ul class="hlist" id="upList"></ul>
     <div class="row" style="margin-top:10px"><button class="btn primary" id="saveCen" disabled>Salvar censos</button><button class="btn" id="clearUp" hidden>Limpar</button></div>
@@ -928,7 +928,7 @@ async function readPdf(file) {
     for (const [k, v] of Object.entries(r.postos)) { postos[k] = postos[k] || { label: v.label, n: 0 }; postos[k].n += v.n; }
     pats.push(...r.pats);
   }
-  if (!hasText) { const e = new Error('este PDF é uma imagem (impresso e escaneado ou foto). Baixe o censo direto do sistema em PDF, sem imprimir'); throw e; }
+  if (!hasText) { const e = new Error('este PDF não tem texto: foi salvo como imagem (Microsoft Print to PDF, impressão ou escaneado). Use o arquivo original baixado do sistema, sem imprimir'); throw e; }
   return { date, hosp, hnome, postos, pats };
 }
 async function handleFiles(list) {
@@ -958,7 +958,7 @@ function renderUp() {
   const items = [];
   for (const h of HIDS) {
     const u = S.up.hosp[h], H = HOSPS[h];
-    if (!u) { items.push(`<li><div class="hh"><span><b>${esc(H.nome)}</b></span><span class="wait">${S.cen[h] && S.cen[h][today()] ? '✓ censo de hoje já salvo' : 'aguardando censo'}</span></div></li>`); continue; }
+    if (!u) { items.push(`<li><div class="hh"><span><b>${esc(H.nome)}</b></span><span class="${S.cen[h] && S.cen[h][today()] ? 'ok' : 'wait'}">${S.cen[h] && S.cen[h][today()] ? (S.cen[h][today()].meta?.fonte === 'bate censo' ? `✓ ${S.cen[h][today()].pats.length} pacientes · enviado pela equipe` : `✓ ${S.cen[h][today()].pats.length} pacientes · censo de hoje salvo`) : 'aguardando censo'}</span></div></li>`); continue; }
     const fixed = postosOf(h);
     const sp = selPostos(h);
     const n = [...u.pats.values()].filter(p => sp.includes(p.posto)).length;

@@ -1135,16 +1135,19 @@ const fOf = k => FILTERS.find(f => f[0] === k)[2];
 /* ======================= arquivos ======================= */
 try { pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; } catch (e) {}
 async function readPdf(file) {
+  let hasTxt = false;
   const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, disableFontFace: true }).promise;
   let unit = null, pats = [], date = '', units = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const tc = await (await doc.getPage(i)).getTextContent();
+    if (tc.items.some(it => (it.str || '').trim())) hasTxt = true;
     const items = tc.items.map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5] }));
     const txt = items.map(i => i.str).join(' ');
     const dm = txt.match(/OCUPACAO HOSPITALAR EM\s*(\d{2}\/\d{2}\/\d{4})/); if (dm && !date) date = dm[1];
     if (i === 1) { const hs = hospOfText(txt); if (hs && hs !== H.id) { const e = new Error(`este censo é do ${HOSPS[hs].nome}. Troque o hospital no topo da tela (ou abra o link da equipe dele)`); e.hosp = hs; throw e; } }
     const r = L.parseCensus(items); unit = unit || r.unit; r.units.forEach(u => { if (!units.includes(u)) units.push(u); }); pats.push(...r.patients);
   }
+  if (!hasTxt) throw new Error('este PDF não tem texto: foi salvo como imagem (Microsoft Print to PDF, impressão ou escaneado). Use o arquivo original baixado do sistema, sem imprimir');
   return { unit, units, patients: pats, date };
 }
 async function handleFiles(list) {
