@@ -253,6 +253,9 @@ details.tv summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--mut
 .ulinks .u{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--paper);display:flex;justify-content:space-between;align-items:center;gap:8px}
 .ulinks .u b{font-size:14px}.ulinks .u span{display:flex;gap:6px}
 .ulinks a{font-size:12.5px;font-weight:700;color:var(--brand);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:3px 9px;background:var(--card)}
+.gb{display:grid;grid-template-columns:minmax(120px,190px) minmax(0,1fr) 44px;gap:8px;align-items:center;font-size:14px;margin:6px 0}
+.gb .bar{height:14px;background:var(--soft);border-radius:4px;overflow:hidden}.gb .bar i{display:block;height:100%;background:var(--bar);border-radius:0 4px 4px 0}
+.gb b{text-align:right}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:9px 14px;border-radius:9px;font-size:14px;z-index:9}
 </style>
 </head>
@@ -690,6 +693,7 @@ dSAmiECD0Adivpo5aHfvbi1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span cl
 <div class="bar" aria-hidden="true"></div>
 
 <div class="wrap">
+  <section class="panel" id="wait"><p class="lead" style="margin:0">Conectando à planilha… na primeira abertura do dia pode levar até 20 segundos.</p></section>
   <section class="panel" id="connect" hidden>
     <h2>Entrar no painel</h2>
     <p class="lead">Digite o código de gestor. Ele dá acesso aos dados de todos os hospitais; não passe para as equipes.</p>
@@ -751,6 +755,12 @@ dSAmiECD0Adivpo5aHfvbi1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span cl
     </section>
   </div>
 
+  <section class="panel" id="gargPanel">
+    <h2>O que está travando as altas <small id="gargSub"></small></h2>
+    <p class="lead">Motivos marcados pelos médicos no bate censo ("o que falta" e "por que não saiu") nos pacientes internados. Use para levar à diretoria o que depende de outras áreas.</p>
+    <div id="garg"></div>
+  </section>
+
   <section class="panel">
     <h2>Quem saiu <small id="outSub"></small></h2>
     <p class="lead">Pacientes que estavam no censo anterior e não estão no seguinte (alta, óbito ou transferência).</p>
@@ -776,7 +786,7 @@ const HOSPS = {
   hros: { id: 'hros', nome: 'Hospital N. Sra. do Rosário', curto: 'Rosário', un: '718', re: /ROSARIO/, vs: false, bc: true,
           postos: ['7184A0', '7185A0', '7186A0'], label: l => ((l.match(/(\d+)\s*ANDAR/) || [])[1] || l) + (/\d+\s*ANDAR/.test(l) ? 'º andar' : '') }
 };
-const HIDS = Object.keys(HOSPS);
+let HIDS = Object.keys(HOSPS);
 const META_DIAS = 3;
 const SHEET_URL = 'https://script.google.com/macros/s/AKfycbxkGguEX2yO0-5BY8Fkt8XiumbxyW7xmHRL9-Bqr2X1UxhlPirm34OSDXAn4FSCNvD7mQ/exec';
 const RP_CONV = /NOTRE|INTERMEDICA|GNDI|HAPVIDA/;
@@ -823,6 +833,8 @@ async function connect(code) {
   const api = makeApi(code);
   const j = await api({ op: 'ping' }, true);
   if (!j.gestor) { const e = new Error('codigo'); e.code = 'codigo'; throw e; }
+  if (Array.isArray(j.hosps) && j.hosps.length) { HIDS = Object.keys(HOSPS).filter(h => j.hosps.includes(h)); if (HIDS.length === 1) S.hosp = HIDS[0]; }
+  document.querySelector('header.top .sub').textContent = HIDS.length === Object.keys(HOSPS).length ? 'Enfermarias · giro de leitos, altas e permanência' : HIDS.map(h => HOSPS[h].nome).join(' · ');
   API = api; try { localStorage.setItem(CFGK, code); } catch (e) {}
   linkUnits();
 }
@@ -852,7 +864,7 @@ const P = a => ({ id: a[0], unit: a[1], bed: a[2], name: a[3], conv: a[4], team:
 const postosOf = h => HOSPS[h].postos || (S.acoes[h + '|_postos'] || {}).postos || null;
 
 async function loadAll() {
-  setSync('', 'Carregando…');
+  setSync('', 'Carregando os censos…');
   const from = D.add(today(), -75);
   const [c, a] = await Promise.all([API({ op: 'censos', from }, true), API({ op: 'acoes' }, true)]);
   S.cen = {}; for (const r of c.censos) { (S.cen[r.hosp] = S.cen[r.hosp] || {})[r.day] = { meta: r.meta, pats: r.pats.map(P) }; }
@@ -1086,14 +1098,14 @@ function render() {
   document.querySelectorAll('#perSeg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === S.per));
   document.querySelectorAll('#teamSeg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.t === S.team));
   const withData = HIDS.filter(h => S.cen[h] && Object.keys(S.cen[h]).length);
-  $('hospChips').innerHTML = `<button class="chip" data-h="all" aria-pressed="${S.hosp === 'all'}">Todos</button>` + HIDS.map(h => `<button class="chip" data-h="${h}" aria-pressed="${S.hosp === h}" ${withData.includes(h) ? '' : 'disabled title="Ainda sem censo carregado"'} style="${withData.includes(h) ? '' : 'opacity:.5'}">${esc(HOSPS[h].curto)}${S.cen[h]?.[S.day] ? `<b>${S.cen[h][S.day].pats.length}</b>` : ''}</button>`).join('');
+  $('hospChips').innerHTML = (HIDS.length > 1 ? `<button class="chip" data-h="all" aria-pressed="${S.hosp === 'all'}">Todos</button>` : '') + HIDS.map(h => `<button class="chip" data-h="${h}" aria-pressed="${S.hosp === h}" ${withData.includes(h) ? '' : 'disabled title="Ainda sem censo carregado"'} style="${withData.includes(h) ? '' : 'opacity:.5'}">${esc(HOSPS[h].curto)}${S.cen[h]?.[S.day] ? `<b>${S.cen[h][S.day].pats.length}</b>` : ''}</button>`).join('');
   const todayMissing = HIDS.filter(h => !(S.cen[h] && S.cen[h][today()]));
   $('loadSum').textContent = todayMissing.length === HIDS.length ? '· nenhum censo de hoje ainda' : todayMissing.length ? `· falta hoje: ${todayMissing.map(h => HOSPS[h].curto).join(', ')}` : '· todos os censos de hoje carregados ✓';
   if (!S.loadOpened && (!days.length || todayMissing.length === HIDS.length)) { $('load').open = true; S.loadOpened = true; }
   renderUp();
   if (!days.length) { $('tiles').innerHTML = '<div class="panel empty">Carregue o primeiro censo acima. Os indicadores aparecem a partir do segundo dia (as saídas saem da comparação entre dois censos).</div>'; ['cmp', 'chart', 'dueList', 'longList', 'outList', 'dayTbl'].forEach(id => $(id).innerHTML = ''); return; }
   const hs = activeH(), st = hs.map(stats), T = S.hosp === 'all' ? sumStats(st) : st[0];
-  renderTiles(T); renderCmp(st, T); renderChart(hs); renderDue(hs); renderLong(hs); renderOut(hs);
+  renderTiles(T); renderCmp(st, T); renderChart(hs); renderDue(hs); renderLong(hs); renderGarg(hs); renderOut(hs);
 }
 function tile(k, v, s, cls, meta) { return `<div class="tile ${cls || ''}"><span class="k">${k}</span><span class="v">${v}</span><span class="s">${s}</span>${meta || ''}</div>`; }
 function renderTiles(T) {
@@ -1167,7 +1179,9 @@ function bcLine(h, id) {
   const b = bcLatest(h, id);
   if (!b) return `<div class="bcl miss">Sem bate censo deste paciente.</div>`;
   const bits = [`<b>Bate censo ${D.short(b.day)}:</b> ${esc(PREV[b.prev] || 'sem previsão marcada')}`];
-  if (b.falta) bits.push('falta: ' + esc(b.falta)); if (b.pend) bits.push('pendências: ' + esc(b.pend)); if (b.dd) bits.push('DD/DHD'); if (b.visitador) bits.push('médico: ' + esc(b.visitador));
+  if (b.hd) bits.unshift('<b>HD:</b> ' + esc(b.hd));
+  if ((b.mot || []).length) bits.push('aguarda: ' + esc(b.mot.join(', ')));
+  if (b.falta) bits.push('falta: ' + esc(b.falta)); if (b.pend) bits.push('pendências: ' + esc(b.pend)); if (b.dd) bits.push('DD/DHD'); if (b.visitador) bits.push('médico: ' + esc(b.visitador)); if (b.por) bits.push('preenchido por ' + esc(b.por) + (b.atualizado ? ' às ' + new Date(b.atualizado).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''));
   return `<div class="bcl ${!b.falta && (!b.prev || b.prev === 'sem') ? 'miss' : ''}">${bits.join(' · ')}</div>`;
 }
 function head(h, p, extra) {
@@ -1201,6 +1215,26 @@ function renderLong(hs) {
   $('longList').innerHTML = shown.length ? shown.map(r => `<div class="it ${(r.p.dias ?? 0) > 7 ? 'long' : 'd7'}">${head(r.h, r.p)}${bcLine(r.h, r.p.id)}${acaoBox(r.h, r.p.id, r.p.name)}</div>`).join('') : '<p class="empty">Ninguém nesta faixa.</p>';
   $('longMore').hidden = list.length <= 15 || S.longAll; $('longMore').textContent = `Mostrar todos (${list.length})`;
 }
+const MOTF = ['Exame', 'Parecer', 'Procedimento', 'DD/DHD', 'Vaga/transferência', 'Autorização', 'Social/família', 'Clinicamente instável', 'ATB endovenoso'];
+const NS = [['Exame', /exame|resultado/i], ['Parecer', /parecer/i], ['DD/DHD', /DD\/DHD|DHD|desospital/i], ['Social/família', /fam[ií]lia|transporte|social/i], ['Clinicamente instável', /piora cl[ií]nica|inst[aá]vel/i], ['Autorização', /autoriza/i]];
+function renderGarg(hs) {
+  const cnt = {}, cntL = {}; let n = 0, nL = 0;
+  for (const h of hs) {
+    if (!HOSPS[h].bc) continue;
+    const cen = S.cen[h]?.[hDay(h)]; if (!cen) continue;
+    for (const p of cen.pats) {
+      const b = bcLatest(h, p.id); if (!b || b.desfecho || b.prev === 'efetivada') continue;
+      const ms = new Set(b.mot || []);
+      for (const [lab, re] of NS) if (re.test(b.naosaiu || '')) ms.add(lab);
+      if (!ms.size) continue;
+      n++; const lg = isLong(h, p); if (lg) nL++;
+      ms.forEach(m => { cnt[m] = (cnt[m] || 0) + 1; if (lg) cntL[m] = (cntL[m] || 0) + 1; });
+    }
+  }
+  const rows = Object.entries(cnt).sort((a, b) => b[1] - a[1]), mx = rows.length ? rows[0][1] : 1;
+  $('gargSub').textContent = n ? `· ${n} paciente(s) com motivo marcado · ${nL} acima de ${META_DIAS} dias` : '';
+  $('garg').innerHTML = rows.length ? rows.map(([m, v]) => `<div class="gb" title="${v} pacientes, ${cntL[m] || 0} acima de ${META_DIAS} dias"><span>${esc(m)}</span><span class="bar"><i style="width:${Math.round(100 * v / mx)}%"></i></span><b>${v}</b></div>`).join('') : '<p class="empty">Ainda sem motivos marcados. Eles aparecem quando os médicos tocam nos botões de "o que falta" no bate censo.</p>';
+}
 function renderOut(hs) {
   const rows = []; let dayLbl = '';
   for (const h of hs) {
@@ -1231,7 +1265,7 @@ function resumo() {
 $('codeForm').addEventListener('submit', async e => {
   e.preventDefault(); const c = $('codeIn').value.trim().toLowerCase(); if (!c) return;
   setStatus('codeStatus', 'Conferindo…');
-  try { await connect(c); $('connect').hidden = true; $('main').hidden = false; await loadAll(); }
+  try { await connect(c); $('connect').hidden = true; $('wait').hidden = true; $('main').hidden = false; await loadAll(); }
   catch (err) { setStatus('codeStatus', err.code === 'codigo' ? 'Código de gestor inválido.' : 'Sem conexão com a planilha. Tente de novo.', true); }
 });
 $('fileIn').addEventListener('change', e => { handleFiles([...e.target.files]); e.target.value = ''; });
@@ -1275,9 +1309,10 @@ let rzT; addEventListener('resize', () => { clearTimeout(rzT); rzT = setTimeout(
   const m = location.hash.match(/^#(ger-[a-z0-9]+)$/i);
   if (m) { code = m[1].toLowerCase(); try { history.replaceState(null, '', location.pathname); } catch (e) {} }
   if (!code) try { code = localStorage.getItem(CFGK); } catch (e) {}
-  if (!code) { $('connect').hidden = false; return; }
-  try { await connect(code); $('main').hidden = false; loadAll.t = Date.now(); await loadAll(); }
-  catch (e) { $('connect').hidden = false; $('codeIn').value = code; setStatus('codeStatus', e.code === 'codigo' ? 'Código de gestor inválido.' : 'Sem conexão com a planilha. Tente de novo.', true); setSync('err', 'Desconectado'); }
+  if (!code) { $('wait').hidden = true; $('connect').hidden = false; return; }
+  setSync('', 'Conectando…');
+  try { await connect(code); $('wait').hidden = true; $('main').hidden = false; loadAll.t = Date.now(); await loadAll(); }
+  catch (e) { $('wait').hidden = true; $('connect').hidden = false; $('codeIn').value = code; setStatus('codeStatus', e.code === 'codigo' ? 'Código de gestor inválido.' : 'Sem conexão com a planilha. Tente de novo.', true); setSync('err', 'Desconectado'); }
 })();
 </script>
 </body>
