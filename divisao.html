@@ -1021,27 +1021,43 @@ L.divide = function (patients, docs, history, fixed) {
     const d = ok.filter(d => d.n < d.target)[0] || ok.sort((a, b) => a.n - a.target - (b.n - b.target))[0] || st.filter(d => d.n < d.target)[0] || st[0];
     put(p, d.i);
   }
-  // 4. trocas entre pacientes ainda livres: andar, posto e, por último, CM/cirúrgico e RP/VS
-  const movable = patients.filter(p => p.fixedDi == null && !p.star && !p.cont);
-  const pCM = N ? patients.filter(p => p.group === 'CM').length / N : 0;
+  // 4. equilíbrio: MESMO NÚMERO DE CLÍNICOS (CM) entre os médicos e o restante (especialidades) redividido.
+  //    Trocas 1 a 1 (o total de cada médico não muda). Prioridade: CM igual > andar/posto > continuidade.
+  //    Nunca: vínculo fixo, paciente VS com médico RP, vetos.
+  for (const p of patients) p.home = (p.star || p.cont) ? res.assign.get(p) : null;
+  const movable = patients.filter(p => p.fixedDi == null);
   const mine = i => patients.filter(p => res.assign.get(p) === i);
-  const cost = (i, ps) => {
+  const cmN = st.map(d => mine(d.i).filter(p => p.group === 'CM').length);
+  const meanCM = patients.filter(p => p.group === 'CM').length / D;
+  const docCost = (i, ps) => {
     if (!ps.length) return 0;
     const cnt = {}; for (const p of ps) cnt[p.unit] = (cnt[p.unit] || 0) + 1;
     const top = Math.max(...Object.values(cnt)), floors = new Set(ps.map(fl)), pr = prefOf(st[i]);
-    const cm = ps.filter(p => p.group === 'CM').length, wrong = ps.filter(p => p.team !== st[i].team).length;
-    const ban = ps.filter(p => bannedFor(p)(i)).length;
-    return 10000 * ban + 300 * (floors.size - 1) + 100 * (Object.keys(cnt).length - 1) + 3 * (ps.length - top) + (pr && !floors.has(pr) ? 50 : 0) + 4 * Math.abs(cm - ps.length * pCM) + 1.5 * wrong;
+    const ban = ps.filter(p => bannedFor(p)(i)).length, wrong = ps.filter(p => p.team !== st[i].team).length;
+    const brk = ps.filter(p => p.home != null && p.home !== i).length;
+    return 1e6 * ban + 60 * (floors.size - 1) + 20 * (Object.keys(cnt).length - 1) + (ps.length - top) + (pr && !floors.has(pr) ? 30 : 0) + 1.5 * wrong + 25 * brk;
   };
-  for (let pass = 0; pass < 40; pass++) {
-    let imp = false;
+  const cmCost = c => 400 * c.reduce((a, x) => a + (x - meanCM) * (x - meanCM), 0);
+  for (let pass = 0; pass < 60; pass++) {
+    let best = null;
+    const cur = st.map(d => docCost(d.i, mine(d.i))), base = cmCost(cmN);
     for (const a_ of movable) for (const b_ of movable) {
-      const a = res.assign.get(a_), b = res.assign.get(b_); if (a === b) continue;
-      const A = mine(a), B = mine(b), A2 = A.filter(x => x !== a_).concat(b_), B2 = B.filter(x => x !== b_).concat(a_);
-      if (cost(a, A2) + cost(b, B2) < cost(a, A) + cost(b, B) - 0.01) { res.assign.set(a_, b); res.assign.set(b_, a); imp = true; }
+      const a = res.assign.get(a_), b = res.assign.get(b_);
+      if (a === b || a_ === b_) continue;
+      if (bannedFor(b_)(a) || bannedFor(a_)(b)) continue;
+      const A2 = mine(a).filter(x => x !== a_).concat(b_), B2 = mine(b).filter(x => x !== b_).concat(a_);
+      const c2 = cmN.slice(); if (a_.group === 'CM') { c2[a]--; c2[b]++; } if (b_.group === 'CM') { c2[b]--; c2[a]++; }
+      const gain = (cur[a] + cur[b] + base) - (docCost(a, A2) + docCost(b, B2) + cmCost(c2));
+      if (gain > 0.01 && (!best || gain > best.gain)) best = { gain, a_, b_, a, b, c2 };
     }
-    if (!imp) break;
+    if (!best) break;
+    res.assign.set(best.a_, best.b); res.assign.set(best.b_, best.a); best.c2.forEach((v, k) => cmN[k] = v);
   }
+  const brokeN = patients.filter(p => p.home != null && res.assign.get(p) !== p.home).length;
+  for (const p of patients) if (p.home != null && res.assign.get(p) !== p.home) { p.star = false; p.cont = null; }
+  if (brokeN) res.notes.push({ t: 'regra', s: `Para igualar o número de clínicos, ${brokeN} paciente(s) mudaram do médico que já acompanhava.` });
+  const cmTxt = st.map(d => `${d.name.split(' ')[0]} ${cmN[d.i]}`).join(' · ');
+  res.notes.push({ t: 'regra', s: `Clínicos (CM) por médico: ${cmTxt}.` + (Math.max(...cmN) - Math.min(...cmN) > 1 ? ' A diferença maior que 1 vem da regra RP/VS (paciente VS não vai para médico RP).' : '') });
   const cross = patients.filter(p => p.fixedDi == null && st[res.assign.get(p)].team !== p.team).length;
   if (cross && !mixed) res.notes.push({ t: 'regra', s: `Só há médicos de uma equipe hoje: ${cross} paciente(s) da outra equipe (RP/VS) ficaram com eles.` });
   else if (cross) res.notes.push({ t: 'regra', s: `${cross} paciente(s) RP ficaram com médico VS (continuidade ou equilíbrio do número de pacientes). Médico RP não recebe paciente VS.` });
