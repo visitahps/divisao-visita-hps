@@ -967,7 +967,7 @@ L.parseDivText = function (txt) {
     if (m) { date = date || m[1]; doc = null; continue; }
     m = line.match(/^([A-Za-zÀ-ÿ .'-]+?)\s*(?:\((RP|VS)\))?\s*[—–·-]+\s*\d+\s*pacientes?/i);
     if (m) { doc = m[1].trim(); continue; }
-    m = line.match(/^(\d{3})(?:-\d|[A-Z])?\s*-\s*(.+?)\s*(\((CM|Cir[uú]rgico|Especialidade|Esp\.?)\))?\s*$/i);
+    m = line.match(/^(\d{3})(?:-\d|[A-Z])?\s*-\s*(.+?)\s*(\(([^()]+)\))?\s*$/i);
     if (m && doc) rows.push({ doc, room: m[1], nn: L.norm(m[2]) });
   }
   return { date, rows };
