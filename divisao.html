@@ -164,7 +164,8 @@ aside.steps{border-right:1px solid var(--line);padding:18px clamp(16px,3vw,24px)
 .filelist li{display:flex;justify-content:space-between;gap:8px;padding:6px 10px;background:var(--card);border:1px solid var(--line);border-radius:8px}
 .filelist .ok{color:var(--cm);font-weight:600}.filelist .bad{color:var(--warn);font-weight:600}
 .docs{display:grid;gap:8px}
-.docrow{display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center}
+.docrow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 6px;align-items:center;margin-bottom:4px}
+.docrow .dcel{grid-column:1/-1;grid-row:2;font-size:13px;padding:5px 10px}
 .docrow input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--card)}
 .seg button{border:0;background:transparent;padding:7px 10px;font-size:13px;font-weight:700;cursor:pointer;color:var(--muted)}
@@ -750,6 +751,14 @@ function setHosp(id) { if (!HOSPS[id]) return false; H = HOSPS[id]; try { localS
 const hospsHere = () => Object.keys(HOSPS).filter(id => { try { const k = id === 'hps' ? 'hps-planilha' : 'hps-planilha-' + id; return !!localStorage.getItem(k); } catch (e) { return false; } });
 /* ===== Lógica da divisão de visita (sem DOM) ===== */
 const L = {};
+/* agenda de celulares dos médicos (só neste aparelho e na planilha; nunca vai para o PDF nem para o texto da divisão) */
+L.docKey = n => L.norm(n).split(' ').filter(w => w && !['DR', 'DRA', 'DOUTOR', 'DOUTORA'].includes(w)).join(' ');
+const FONES = {
+  get() { try { const o = JSON.parse(localStorage.getItem('hps-fones') || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } },
+  add(m) { const o = FONES.get(); let ch = false; for (const [k, v] of Object.entries(m || {})) { const d = String(v || '').replace(/\D/g, ''); if (k && o[k] !== d) { if (d) o[k] = d; else delete o[k]; ch = true; } } if (ch) try { localStorage.setItem('hps-fones', JSON.stringify(o)); } catch (e) {} },
+  of(n) { return FONES.get()[L.docKey(n)] || ''; }
+};
+const fmtCel = d => { d = String(d || '').replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, ''); return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d.length === 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : d; };
 L.norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 L.title = s => String(s||'').toLowerCase().replace(/(^|\s)(\S)/g,(m,a,b)=>a+b.toUpperCase()).replace(/\b(Da|De|Do|Das|Dos|E)\b/g,w=>w.toLowerCase());
 L.RP_CONV = /NOTRE|INTERMEDICA|GNDI|HAPVIDA/;
@@ -1149,7 +1158,7 @@ async function saveHandoff() {
   if (window.claude || !S.raw || !window.indexedDB) return;
   try {
     const files = []; for (const f of Object.values(S.raw)) files.push({ name: f.name, type: f.type || '', data: await f.arrayBuffer() });
-    await IDB.set(nsKey('handoff'), { hosp: H.id, date: dday(S.censusDate), savedAt: new Date().toISOString(), div: waText(), files });
+    await IDB.set(nsKey('handoff'), { hosp: H.id, date: dday(S.censusDate), savedAt: new Date().toISOString(), div: waText(), fones: Object.fromEntries((S.activeDocs || S.docs).map(d => [L.docKey(d.name), FONES.of(d.name)]).filter(([k, v]) => k && v)), files });
   } catch (e) {}
 }
 applyHosp();
@@ -1277,6 +1286,7 @@ function renderDocs() {
   $('docs').innerHTML = S.docs.map((d, i) => `
     <div class="docrow">
       <input aria-label="Nome do médico ${i + 1}" placeholder="Nome do médico" value="${esc(d.name)}" data-i="${i}" class="dname">
+      <input aria-label="Celular (WhatsApp) do médico ${i + 1}" placeholder="Celular para lembrete no WhatsApp (opcional)" type="tel" inputmode="tel" autocomplete="off" value="${esc(fmtCel(FONES.of(d.name)))}" data-i="${i}" class="dcel">
       <span class="seg" role="group" aria-label="Equipe">
         <button class="rp" aria-pressed="${d.team === 'RP'}" data-i="${i}" data-t="RP">RP</button>
         <button class="vs" aria-pressed="${d.team === 'VS'}" data-i="${i}" data-t="VS">VS</button>
@@ -1293,7 +1303,8 @@ function renderPresc() {
   $('prescWrap').hidden = !list.length;
   $('presc').innerHTML = list.map(([n, c]) => `<button class="chip" data-presc="${esc(n)}">${esc(L.title(n))}<b>${c}</b></button>`).join('');
 }
-$('docs').addEventListener('input', e => { if (e.target.classList.contains('dname')) { S.docs[+e.target.dataset.i].name = e.target.value; saveDocs(); S.assign = null; renderReview(); renderPresc(); updateGo(); clearBoard(); } });
+$('docs').addEventListener('input', e => { if (e.target.classList.contains('dcel')) { const d = S.docs[+e.target.dataset.i]; if (d && L.docKey(d.name)) FONES.add({ [L.docKey(d.name)]: e.target.value }); return; } if (e.target.classList.contains('dname')) { S.docs[+e.target.dataset.i].name = e.target.value; saveDocs(); S.assign = null; renderReview(); renderPresc(); updateGo(); clearBoard(); } });
+$('docs').addEventListener('focusout', e => { if (!e.target.classList.contains('dname')) return; const c = e.target.parentElement.querySelector('.dcel'); if (c && !c.value) c.value = fmtCel(FONES.of(e.target.value)); });
 $('docs').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.t) { S.docs[+b.dataset.i].team = b.dataset.t; }

@@ -239,7 +239,8 @@ details.tv summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--mut
 .bcl.miss{background:var(--long-soft)}
 .na{font-size:13.5px;border:1px solid var(--line);border-left:5px solid var(--long);border-radius:10px;padding:8px 12px;margin-bottom:8px;overflow-wrap:anywhere}
 .na.ok{border-left-color:var(--ok)}.na.miss{background:var(--long-soft)}
-.na ul{margin:6px 0 0;padding-left:18px}.na li{margin:2px 0}
+.na ul{margin:6px 0 0;padding-left:18px}
+.na .wa{display:inline-block;margin-left:4px;font-weight:700;font-size:12.5px;color:var(--ok);background:var(--ok-soft);border-radius:999px;padding:2px 10px;text-decoration:none}.na li{margin:2px 0}
 .bcl.just{background:var(--pm-soft)}
 .acao{display:grid;gap:5px}
 .acao label{font-size:12px;font-weight:700;color:var(--muted)}
@@ -851,7 +852,7 @@ async function connect(code) {
 async function linkUnits() {
   try {
     const j = await API({ op: 'codigos' }, true);
-    for (const [h, c] of Object.entries(j.codigos || {})) { if (!HOSPS[h]) continue; localStorage.setItem(h === 'hps' ? 'hps-planilha' : 'hps-planilha-' + h, JSON.stringify({ u: SHEET_URL, c })); }
+    for (const [h, c] of Object.entries(j.codigos || {})) { if (!HOSPS[h]) continue; S.tcodes = S.tcodes || {}; S.tcodes[h] = c; localStorage.setItem(h === 'hps' ? 'hps-planilha' : 'hps-planilha-' + h, JSON.stringify({ u: SHEET_URL, c })); }
   } catch (e) {}
   const here = HIDS.filter(h => { try { return !!localStorage.getItem(h === 'hps' ? 'hps-planilha' : 'hps-planilha-' + h); } catch (e) { return false; } });
   if (!here.length) return;
@@ -1231,14 +1232,22 @@ function naoAt(h) {
   const hd = hDay(h), cen = S.cen[h]?.[hd]; if (!cen || !HOSPS[h].bc) return null;
   const day = (S.bc[h] || {})[hd] || {};
   if (!Object.keys(day).length) return { h, hd, aberto: false, tot: cen.pats.length, n: cen.pats.length, docs: [] };
-  const m = new Map(); let n = 0;
+  const m = new Map(), cels = {}; let n = 0;
   for (const p of cen.pats) {
     const b = day[p.id]; if (b && (b.tocado || b.por || b.desfecho === 'alta' && b.por)) continue;
     if (b && b.presente === false) continue;
     n++; const d = (b && b.visitador) || 'Sem médico na divisão'; if (!m.has(d)) m.set(d, []); m.get(d).push(p.bed);
+    if (b && b.cel) (cels[d] = cels[d] || b.cel);
   }
-  const docs = [...m].map(([d, bs]) => [d, bs.sort((a, b) => String(a).localeCompare(String(b), 'pt', { numeric: true }))]).sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'pt'));
+  const docs = [...m].map(([d, bs]) => [d, bs.sort((a, b) => String(a).localeCompare(String(b), 'pt', { numeric: true })), cels[d] || '']).sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'pt'));
   return { h, hd, aberto: true, tot: cen.pats.length, n, docs };
+}
+const waNum = c => { let d = String(c || '').replace(/\D/g, ''); if (d && d.length <= 11) d = '55' + d; return d; };
+function cobrarHref(h, nome, beds, cel) {
+  const base = location.origin + location.pathname.replace(/[^/]*$/, ''), c = (S.tcodes || {})[h];
+  const first = String(nome).replace(/^(dr|dra|doutor|doutora)\.?\s+/i, '').split(' ')[0];
+  const t = `Olá, ${first}! Lembrete do bate censo de hoje (${HOSPS[h].curto}): ${beds.length === 1 ? 'falta atualizar o leito' : 'faltam atualizar os leitos'} ${beds.join(', ')}. Quando puder, atualize HD, previsão de alta e o que falta: ${base}bate-censo.html${c ? '#' + c : '?h=' + h} Obrigado!`;
+  return 'https://wa.me/' + waNum(cel) + '?text=' + encodeURIComponent(t);
 }
 function renderNaoAt(hs) {
   const rs = hs.map(naoAt).filter(Boolean);
@@ -1250,7 +1259,7 @@ function renderNaoAt(hs) {
     const hdr = `<b>${esc(H.curto)}</b> · bate censo de ${D.short(r.hd)}`;
     if (!r.aberto) return `<div class="na miss">${hdr} · <b>não foi aberto</b> (${r.tot} leitos sem atualização)</div>`;
     if (!r.n) return `<div class="na ok">${hdr} · ✓ ${r.tot} de ${r.tot} atualizados</div>`;
-    return `<div class="na">${hdr} · <b>${r.tot - r.n} de ${r.tot} atualizados</b> · faltam ${r.n}<ul>${r.docs.map(([d, bs]) => `<li><b>${esc(d)}</b> (${bs.length}): ${bs.map(esc).join(', ')}</li>`).join('')}</ul></div>`;
+    return `<div class="na">${hdr} · <b>${r.tot - r.n} de ${r.tot} atualizados</b> · faltam ${r.n}<ul>${r.docs.map(([d, bs, cel]) => `<li><b>${esc(d)}</b> (${bs.length}): ${bs.map(esc).join(', ')}${d === 'Sem médico na divisão' ? '' : ` <a class="wa" target="_blank" rel="noopener" href="${esc(cobrarHref(r.h, d, bs, cel))}">${cel ? 'Cobrar no WhatsApp' : 'Enviar no WhatsApp'}</a>`}</li>`).join('')}</ul></div>`;
   }).join('');
 }
 function renderGarg(hs) {
