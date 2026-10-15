@@ -237,6 +237,9 @@ details.tv summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--mut
 .bcl{font-size:13px;background:var(--soft);border-radius:7px;padding:5px 9px;overflow-wrap:anywhere}
 .bcl b{font-weight:700}
 .bcl.miss{background:var(--long-soft)}
+.na{font-size:13.5px;border:1px solid var(--line);border-left:5px solid var(--long);border-radius:10px;padding:8px 12px;margin-bottom:8px;overflow-wrap:anywhere}
+.na.ok{border-left-color:var(--ok)}.na.miss{background:var(--long-soft)}
+.na ul{margin:6px 0 0;padding-left:18px}.na li{margin:2px 0}
 .bcl.just{background:var(--pm-soft)}
 .acao{display:grid;gap:5px}
 .acao label{font-size:12px;font-weight:700;color:var(--muted)}
@@ -735,6 +738,12 @@ dSAmiECD0Adivpo5aHfvbi1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span cl
     <p class="hint">Toque numa linha para ver só aquele hospital. TMP = pacientes-dia ÷ saídas no período. Giro = saídas ÷ média de leitos ocupados.</p>
   </section>
 
+  <section class="panel" id="naPanel">
+    <h2>Bate censo: leitos não atualizados <small id="naSub"></small></h2>
+    <p class="lead">Leitos do censo que nenhum médico atualizou no bate censo do dia (o que o sistema traz do dia anterior não conta), com o médico da divisão responsável.</p>
+    <div id="naList"></div>
+  </section>
+
   <section class="panel">
     <h2>Saídas por dia <small id="chartSub"></small></h2>
     <div class="chart" id="chart"></div>
@@ -1105,7 +1114,7 @@ function render() {
   renderUp();
   if (!days.length) { $('tiles').innerHTML = '<div class="panel empty">Carregue o primeiro censo acima. Os indicadores aparecem a partir do segundo dia (as saídas saem da comparação entre dois censos).</div>'; ['cmp', 'chart', 'dueList', 'longList', 'outList', 'dayTbl'].forEach(id => $(id).innerHTML = ''); return; }
   const hs = activeH(), st = hs.map(stats), T = S.hosp === 'all' ? sumStats(st) : st[0];
-  renderTiles(T); renderCmp(st, T); renderChart(hs); renderDue(hs); renderLong(hs); renderGarg(hs); renderOut(hs);
+  renderTiles(T); renderCmp(st, T); renderChart(hs); renderNaoAt(hs); renderDue(hs); renderLong(hs); renderGarg(hs); renderOut(hs);
 }
 function tile(k, v, s, cls, meta) { return `<div class="tile ${cls || ''}"><span class="k">${k}</span><span class="v">${v}</span><span class="s">${s}</span>${meta || ''}</div>`; }
 function renderTiles(T) {
@@ -1217,6 +1226,33 @@ function renderLong(hs) {
 }
 const MOTF = ['Exame', 'Parecer', 'Procedimento', 'DD/DHD', 'Vaga/transferência', 'Autorização', 'Social/família', 'Clinicamente instável', 'ATB endovenoso'];
 const NS = [['Exame', /exame|resultado/i], ['Parecer', /parecer/i], ['DD/DHD', /DD\/DHD|DHD|desospital/i], ['Social/família', /fam[ií]lia|transporte|social/i], ['Clinicamente instável', /piora cl[ií]nica|inst[aá]vel/i], ['Autorização', /autoriza/i]];
+/* leitos sem atualização humana no bate censo do dia do censo, por médico da divisão */
+function naoAt(h) {
+  const hd = hDay(h), cen = S.cen[h]?.[hd]; if (!cen || !HOSPS[h].bc) return null;
+  const day = (S.bc[h] || {})[hd] || {};
+  if (!Object.keys(day).length) return { h, hd, aberto: false, tot: cen.pats.length, n: cen.pats.length, docs: [] };
+  const m = new Map(); let n = 0;
+  for (const p of cen.pats) {
+    const b = day[p.id]; if (b && (b.tocado || b.por || b.desfecho === 'alta' && b.por)) continue;
+    if (b && b.presente === false) continue;
+    n++; const d = (b && b.visitador) || 'Sem médico na divisão'; if (!m.has(d)) m.set(d, []); m.get(d).push(p.bed);
+  }
+  const docs = [...m].map(([d, bs]) => [d, bs.sort((a, b) => String(a).localeCompare(String(b), 'pt', { numeric: true }))]).sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'pt'));
+  return { h, hd, aberto: true, tot: cen.pats.length, n, docs };
+}
+function renderNaoAt(hs) {
+  const rs = hs.map(naoAt).filter(Boolean);
+  $('naPanel').hidden = !rs.length; if (!rs.length) return;
+  const tot = rs.reduce((a, r) => a + r.n, 0);
+  $('naSub').textContent = tot ? `· ${tot} leito(s) pendente(s)` : '· todos atualizados';
+  $('naList').innerHTML = rs.map(r => {
+    const H = HOSPS[r.h];
+    const hdr = `<b>${esc(H.curto)}</b> · bate censo de ${D.short(r.hd)}`;
+    if (!r.aberto) return `<div class="na miss">${hdr} · <b>não foi aberto</b> (${r.tot} leitos sem atualização)</div>`;
+    if (!r.n) return `<div class="na ok">${hdr} · ✓ ${r.tot} de ${r.tot} atualizados</div>`;
+    return `<div class="na">${hdr} · <b>${r.tot - r.n} de ${r.tot} atualizados</b> · faltam ${r.n}<ul>${r.docs.map(([d, bs]) => `<li><b>${esc(d)}</b> (${bs.length}): ${bs.map(esc).join(', ')}</li>`).join('')}</ul></div>`;
+  }).join('');
+}
 function renderGarg(hs) {
   const cnt = {}, cntL = {}; let n = 0, nL = 0;
   for (const h of hs) {
@@ -1255,6 +1291,8 @@ function resumo() {
     const H = HOSPS[s.h];
     out.push('', `*${H.curto.toUpperCase()}*`, `Censo de ${D.short(s.hd)} · Internados: ${s.total ?? '—'} · Saídas desde o censo anterior${s.saiOntemDay ? ` (${D.short(s.saiOntemDay)})` : ''}: ${s.saiOntem ?? '—'} · Saídas/dia: ${fmt(s.saiDia)}`, `TMP: ${fmt(s.tmp)} dias ${s.tmp == null ? '' : s.tmp <= META_DIAS ? '✅' : '⚠️'} · Giro: ${fmt(s.giro)} · Acima de ${META_DIAS} dias: ${s.long ?? '—'}`);
     if (H.bc) out.push(`Previstas para hoje: ${s.dueIn.length}${s.dueIn.length ? ` (${s.dueLeft} saíram, ${s.dueSemJust} sem justificativa)` : ''}${s.pc && s.pc.tot ? ` · Previsões cumpridas: ${pct(s.pc.ok, s.pc.tot)}` : ''}`);
+    const na = naoAt(s.h);
+    if (na) out.push(!na.aberto ? `⚠ Bate censo de ${D.short(na.hd)} não foi aberto` : na.n ? `⚠ Leitos não atualizados no bate censo: ${na.n} de ${na.tot} (${na.docs.map(([d, bs]) => `${d.split(' ')[0]} ${bs.length}`).join(', ')})` : `Bate censo: todos os ${na.tot} leitos atualizados ✅`);
     const lg = (s.cur ? s.cur.pats.filter(q => isLong(s.h, q)) : []).sort((a, b) => (b.dias ?? 0) - (a.dias ?? 0)).slice(0, 5);
     if (lg.length) out.push('Maiores permanências:', ...lg.map(q => { const a = S.acoes[s.h + '|' + q.id]; return `• ${q.bed} - ${q.name} (${q.dias}d)${a && a.texto ? ' — ' + a.texto.replace(/\s*\n\s*/g, '; ') : ''}`; }));
   }

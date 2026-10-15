@@ -248,6 +248,12 @@ details.kb dd{margin:0;overflow-wrap:anywhere;white-space:pre-line}
 .mots button{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;cursor:pointer}
 .mots button[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
 .carry{font-weight:600;color:var(--pm)}
+.flag{font-size:12.5px;background:var(--long-soft);color:var(--long);border-radius:6px;padding:4px 8px;overflow-wrap:anywhere}
+.flag b{font-weight:800}
+.pt.naoat{box-shadow:inset 0 0 0 2px var(--long-soft)}
+.naoatbox{background:var(--long-soft);border:1px solid var(--long);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.naoatbox ul{margin:6px 0 8px;padding-left:18px;font-size:13.5px}.naoatbox li{margin:2px 0;overflow-wrap:anywhere}
+.tile.flag .v{color:var(--long)}
 .mebar{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:12px;display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;font-size:14px}
 .mebar.need{background:var(--pm-soft);border-color:var(--pm)}
 .mebar b{font-weight:800}.mebar .opts{display:flex;gap:6px;flex-wrap:wrap}
@@ -772,6 +778,7 @@ dSAmiECD0Adivpo5aHfvbi1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span cl
   <div id="main" hidden>
     <section class="mebar" id="meBar" hidden></section>
     <section class="lembrete" id="lembrete" hidden aria-live="polite"></section>
+    <section class="naoatbox" id="naoatBox" hidden></section>
     <section class="tiles" id="tiles" aria-label="Resumo do dia"></section>
     <div class="tools" id="tools">
       <div class="row">
@@ -1127,9 +1134,20 @@ const MOTIVOS = ['Piora clínica', 'Aguarda exame/resultado', 'Aguarda parecer',
 const mustJust = (id, p) => present(p) && dueYest(id) && !isAlta(p) && !p.desfecho;
 const justTxt = p => String(p.naosaiu || '').trim().replace(/\s*\n\s*/g, '; ');
 const dueYest = id => { const y = S.yest.get(id); return !!y && !y.desfecho && !(y.prev === 'efetivada') && (y.prev === '24h' || y.prev === 'tarde'); };
+/* atualizado hoje por um médico (o que o sistema traz sozinho do dia anterior não conta) */
+const touched = p => !!(p.tocado || p.por);
+const naoAt = p => present(p) && !touched(p);
+const docOf = p => p.c?.visitador || 'Sem médico na divisão';
+const first = n => String(n).split(' ')[0];
+/* leitos não atualizados agrupados por médico da divisão */
+function naoAtPorMedico() {
+  const m = new Map();
+  for (const [, p] of S.pats) if (p.c && naoAt(p)) { const d = docOf(p); if (!m.has(d)) m.set(d, []); m.get(d).push(p); }
+  return [...m].map(([d, ps]) => [d, ps.sort(bedSort)]).sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'pt'));
+}
 const FILTERS = [
   ['todos', 'Todos', p => present(p)],
-  ['nao', 'Não discutidos', p => present(p) && !p.prev && !p.desfecho],
+  ['nao', 'Não atualizados hoje', p => naoAt(p)],
   ['ontem', 'Previstos ontem para hoje', (p, id) => present(p) && dueYest(id)],
   ['tarde', 'Hoje à tarde', p => p.prev === 'tarde'],
   ['24h', 'Em 24h', p => p.prev === '24h'],
@@ -1286,7 +1304,7 @@ function rescue() {
     for (const f of F) if (y[f] && !t[f]) { patch[f] = y[f]; if (f === 'desfecho') patch.desfechoEm = y.desfechoEm || y.atualizado; }
     if (y.resolvido && !t.resolvido && (patch.pend || t.pend === y.pend)) { patch.resolvido = true; patch.resolvidoEm = y.resolvidoEm || y.atualizado; }
     if (!Object.keys(patch).length) continue;
-    patch.resg = y.atualizado; got.push([id, patch]);
+    patch.resg = y.atualizado; if (y.por && !t.por) patch.por = y.por; if (!t.tocado && (y.tocado || y.por)) patch.tocado = y.tocado || y.atualizado; got.push([id, patch]);
   }
   if (!got.length) return;
   got.forEach(([id, patch]) => write(id, patch, true));
@@ -1313,8 +1331,8 @@ function updProg() {
   document.querySelectorAll('#list .group').forEach(g => {
     const el = g.querySelector('.prog'); if (!el) return;
     const ps = [...g.querySelectorAll('.pt[data-id]')].map(e => S.pats.get(e.dataset.id)).filter(p => p && present(p));
-    const done = ps.filter(p => p.prev || p.desfecho).length, all = done === ps.length;
-    el.className = 'prog' + (all ? ' ok' : ''); el.textContent = (all ? '✓ ' : '') + done + ' de ' + ps.length + ' preenchidos';
+    const done = ps.filter(touched).length, all = done === ps.length;
+    el.className = 'prog' + (all ? ' ok' : ''); el.textContent = (all ? '✓ ' : '') + done + ' de ' + ps.length + ' atualizados hoje';
   });
 }
 
@@ -1326,7 +1344,7 @@ function stats() {
   return { total: pr.length, rp: rp.length, vs: pr.length - rp.length, long: rp.filter(lng).length,
     media: rp.length ? rp.reduce((a, p) => a + (p.c?.dias || 0), 0) / rp.length : 0,
     efetivada: cnt(isAlta), tarde: cnt(p => p.prev === 'tarde'), h24: cnt(p => p.prev === '24h'), sem: cnt(p => p.prev === 'sem'),
-    nao: pr.filter(p => !p.prev && !p.desfecho).length, pend: cnt(openPend), pdia: all.filter(p => present(p) && hasPend(p)).length, pdiaRes: all.filter(p => present(p) && hasPend(p) && p.resolvido).length, altas: altas.length, altasRp: altas.filter(p => p.c?.team === 'RP').length, obitos: cnt(p => p.desfecho === 'obito'), utis: cnt(p => p.desfecho === 'uti'), outras: cnt(p => p.desfecho === 'outra'), dd: pr.filter(p => p.dd).length,
+    nao: pr.filter(p => !touched(p)).length, pend: cnt(openPend), pdia: all.filter(p => present(p) && hasPend(p)).length, pdiaRes: all.filter(p => present(p) && hasPend(p) && p.resolvido).length, altas: altas.length, altasRp: altas.filter(p => p.c?.team === 'RP').length, obitos: cnt(p => p.desfecho === 'obito'), utis: cnt(p => p.desfecho === 'uti'), outras: cnt(p => p.desfecho === 'outra'), dd: pr.filter(p => p.dd).length,
     saiu: cnt(p => !present(p)) };
 }
 function renderLembrete() {
@@ -1362,15 +1380,25 @@ document.addEventListener('click', e => {
   if (v === '__outro') { const n = prompt('Seu nome (como aparece na escala):', S.me || ''); if (n && n.trim()) setMe(n); return; }
   setMe(v);
 });
+function renderNaoAt() {
+  const el = $('naoatBox'); if (!el) return;
+  const g = S.pats.size ? naoAtPorMedico() : [], n = g.reduce((a, [, ps]) => a + ps.length, 0);
+  if (!n) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<b>⚠ Leitos não atualizados hoje: ${n}</b> <span class="hint" style="margin:0">Cada médico confere e atualiza os leitos da sua divisão (HD, previsão e o que falta).</span>
+    <ul>${g.map(([d, ps]) => `<li><b>${esc(d)}</b> (${ps.length}): ${ps.map(p => esc(p.c.bed)).join(', ')}</li>`).join('')}</ul>
+    <button class="btn" data-f="nao">Ver só esses leitos</button>`;
+}
 function renderTiles() {
   renderMe();
   renderLembrete();
+  renderNaoAt();
   const s = stats(), fmt = x => x.toLocaleString('pt-BR', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
   const t = (f, cls, k, v, sub) => `<button class="tile ${cls}" data-f="${f}" aria-pressed="${S.f === f}"><span class="k">${k}</span><span class="v">${v}</span><span class="s">${sub}</span></button>`;
   $('tiles').innerHTML = [
     t('todos', '', 'Internados', s.total, H.vs ? `RP ${s.rp} · VS ${s.vs}` : `${UNITS.map(u => `${/^\d+$/.test(u) ? 'posto ' : ''}${u}: ${[...S.pats.values()].filter(p => present(p) && p.c?.unit === u).length}`).join(' · ')}`),
     t('long', 'long', H.vs ? 'RP acima de 3 dias' : 'Acima de 3 dias', s.long, `média${H.vs ? ' RP' : ''} ${fmt(s.media)} dias · meta 3 dias`),
-    t('nao', '', 'Não discutidos', s.nao, s.nao ? 'faltam no bate censo' : 'todos discutidos'),
+    t('nao', s.nao ? 'flag' : 'ok', 'Não atualizados hoje', s.nao, s.nao ? (() => { const g = naoAtPorMedico(); return g.length === 1 ? first(g[0][0]) + ': ' + g[0][1].length : g.length + ' médico(s) com leitos pendentes'; })() : 'todos atualizados'),
     t('efetivada', 'ok', 'Alta efetivada', s.efetivada, 'já no sistema'),
     t('tarde', 'pm', 'Alta hoje à tarde', s.tarde, `${s.pend} pendência(s) aberta(s)`),
     t('24h', 'h24', 'Alta em 24h', s.h24, 'previsão para amanhã'),
@@ -1405,14 +1433,14 @@ function renderList(full) {
   $('list').innerHTML = order.map(g => {
     const ps = groups.get(g);
     const rp = ps.filter(([, p]) => p.c.team === 'RP').length, lg = ps.filter(([, p]) => lng(p)).length;
-    const pres = ps.filter(([, p]) => present(p)), done = pres.filter(([, p]) => p.prev || p.desfecho).length;
-    const prog = pres.length ? `<span class="prog ${done === pres.length ? 'ok' : ''}">${done === pres.length ? '✓ ' : ''}${done} de ${pres.length} preenchidos</span>` : '';
+    const pres = ps.filter(([, p]) => present(p)), done = pres.filter(([, p]) => touched(p)).length;
+    const prog = pres.length ? `<span class="prog ${done === pres.length ? 'ok' : ''}">${done === pres.length ? '✓ ' : ''}${done} de ${pres.length} atualizados hoje</span>` : '';
     return `<section class="group"><h2>${esc(g)} ${prog} <small>${nv(`${ps.length} paciente(s) · RP ${rp} · VS ${ps.length - rp}${lg ? ` · ${lg} RP acima de 3 dias` : ''}`)}</small></h2><div class="cards">${ps.map(([id, p]) => card(id, p)).join('')}</div></section>`;
   }).join('');
 }
 function card(id, p) {
   const c = p.c || {}, ro = !S.canWrite;
-  const cls = ['pt', lng(p) ? 'long' : d4(p) ? 'd4' : '', present(p) ? '' : 'gone', isAlta(p) ? 'done-alta' : p.desfecho ? 'done-out' : ''].join(' ');
+  const cls = ['pt', naoAt(p) ? 'naoat' : '', lng(p) ? 'long' : d4(p) ? 'd4' : '', present(p) ? '' : 'gone', isAlta(p) ? 'done-alta' : p.desfecho ? 'done-out' : ''].join(' ');
   const daysCls = lng(p) ? 'long' : d4(p) ? 'd4' : '';
   const y = S.yest.get(id);
   const yTxt = y && (y.prev || y.falta) ? `<div class="yest ${dueYest(id) && !isAlta(p) ? 'due' : ''}">${dueYest(id) && !isAlta(p) ? '⏰ <b>Alta prevista para hoje.</b> ' : ''}<b>Bate censo de ${D.short(S.yestKey)}:</b> ${esc(PREV[y.prev] || 'sem marcação')}${y.falta ? ' · ' + esc(y.falta) : ''}${y.resolvido ? ' · resolvido' : ''}</div>` : '';
@@ -1424,6 +1452,7 @@ function card(id, p) {
   const updBy = upd && p.por ? `${upd} · ${esc(p.por)}` : upd;
   return `<article class="${cls}" data-id="${esc(id)}">
     <div class="pt-head"><span class="bed">${esc(c.bed)}</span><div class="who"><div class="n">${esc(c.name)}</div><div class="m">${meta}</div></div><span class="days ${daysCls}" title="Dias de internação">${c.dias ?? '?'} d</span></div>
+    ${naoAt(p) ? `<div class="flag" role="note">⚠ <b>Leito não atualizado hoje</b>${c.visitador ? ' · médico: ' + esc(c.visitador) : ' · sem médico na divisão'}${p.herdou ? ' · dados de ' + esc(D.short(p.herdou)) + ' trazidos, confira' : ''}</div>` : ''}
     ${c.diag ? `<p class="clin"><b>${esc(c.diag.replace(/\n/g, ' '))}</b>${c.plano && !/^(N\/?A)$/i.test(c.plano) ? ' · ' + esc(c.plano.replace(/\n/g, ' ')) : ''}</p>` : ''}
     ${['obito', 'uti', 'outra'].includes(p.desfecho) ? `<span class="outtag">${esc(DESF[p.desfecho])}</span>` : ''}
     ${!present(p) ? '<div class="yest"><b>Não está no último censo carregado.</b> Se saiu de alta, marque Alta abaixo.</div>' : ''}
@@ -1444,6 +1473,7 @@ function card(id, p) {
 function write(id, patch, auto) {
   const p = S.pats.get(id); if (!p || !S.canWrite) return;
   const body = { ...patch, atualizado: new Date().toISOString() };
+  if (!auto) body.tocado = body.atualizado;
   if (!auto && S.me) body.por = S.me;
   if (!auto && !S.me) { S.meAsk = true; renderMe(); }
   const next = { ...p, ...body }; const m = new Map(S.pats); m.set(id, next); onPatients(m);
@@ -1521,8 +1551,12 @@ function waTarde() {
   sec(H.vs ? 'RP acima de 3 dias sem previsão' : 'Acima de 3 dias sem previsão', sorted(p => present(p) && lng(p) && p.prev === 'sem'));
   const pd = sorted(p => present(p) && hasPend(p));
   if (pd.length) out.push('', `*Pendências do dia (${pd.length})*`, ...pd.map(pline));
-  const nao = stats().nao; if (nao) out.push('', `_${nao} paciente(s) ainda sem discussão no bate censo._`);
+  naoAtTxt(out);
   return out.join('\n');
+}
+function naoAtTxt(out) {
+  const g = naoAtPorMedico(), n = g.reduce((a, [, ps]) => a + ps.length, 0); if (!n) return;
+  out.push('', `*⚠ Leitos não atualizados hoje (${n})*`, ...g.map(([d, ps]) => `• ${d} (${ps.length}): ${ps.map(p => p.c.bed).join(', ')}`));
 }
 function waFim() {
   const s = stats(); const out = headTxt(`BATE CENSO ${H.curto.toUpperCase()} · FECHAMENTO DO DIA`);
@@ -1540,6 +1574,7 @@ function waFim() {
   ['obito', 'uti', 'outra'].forEach(v => sec(DESF[v], sorted(p => p.desfecho === v)));
   const pd = sorted(p => hasPend(p)), pr = pd.filter(p => p.resolvido).length;
   if (pd.length) out.push('', `*Pendências do dia: ${pr} de ${pd.length} resolvidas*`, ...pd.filter(p => !p.resolvido).map(pline));
+  naoAtTxt(out);
   return out.join('\n');
 }
 async function copyTxt(t) {

@@ -9,8 +9,14 @@ const CODIGOS = {
 };
 let SUF = '';
 
-// Painel de gestão: este código vê os 5 hospitais (censos, bate censo e ações). Não passe para as equipes.
-const GESTORES = { 'ger-m7q4x2kd': true };
+// Painel de gestão: '*' vê os 5 hospitais; os coordenadores veem só as unidades listadas. Não passe para as equipes.
+const GESTORES = {
+  'ger-m7q4x2kd': '*',                // Alexandre: todos os hospitais
+  'ger-onzv59uu': ['hps'],            // Coordenação HPS (Fabiano e Ariovaldo)
+  'ger-5v95gwby': ['hjan', 'hros'],   // Coordenação Jardim Anália + N. Sra. do Rosário (Felipe Fuchs)
+  'ger-03z5zw7j': ['hbos'],           // Coordenação Bosque da Saúde (Fernando Villa Neves)
+  'ger-k37ewovs': ['hcru']            // Coordenação Cruzeiro do Sul (Emanoel Nascimento)
+};
 // aba do bate censo de cada hospital (mesmo sufixo dos códigos acima)
 const HOSP_SUF = { hps: '', hjan: 'hjan', hcru: 'hcru', hbos: 'hbos', hros: 'hros' };
 const CENSOS_GUARDADOS = 400; // dias de censo guardados para o painel
@@ -25,7 +31,8 @@ function doPost(e) { let p = {}; try { p = JSON.parse(e.postData.contents); } ca
 function saida(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
 function responder(p) {
-  if (GESTORES[String(p.code || '')]) return gestor(p);
+  const gst = GESTORES[String(p.code || '')];
+  if (gst) return gestor(p, gst === '*' || gst === true ? Object.keys(HOSP_SUF) : gst);
   const suf = CODIGOS[String(p.code || '')];
   if (suf === undefined) return saida({ ok: false, erro: 'codigo' });
   SUF = suf ? ' ' + suf : '';
@@ -110,13 +117,19 @@ function preparar() { const ss = SpreadsheetApp.getActiveSpreadsheet(); Object.v
 
 
 /* ===================== painel de gestão ===================== */
-function gestor(p) {
+function gestor(p, OK) {
+  const pode = h => OK.indexOf(String(h)) >= 0;
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    if (p.op === 'ping') { abaCensos(ss); abaAcoes(ss); return saida({ ok: true, gestor: true }); }
-    if (p.op === 'censos') return saida({ ok: true, now: Date.now(), censos: lerCensos(ss, String(p.from || '')) });
-    if (p.op === 'acoes') return saida({ ok: true, acoes: lerAcoes(ss) });
-    if (p.op === 'codigos') { const c = {}; Object.keys(CODIGOS).forEach(k => { c[CODIGOS[k] || 'hps'] = k; }); return saida({ ok: true, codigos: c }); }
+    if (p.op === 'ping') { abaCensos(ss); abaAcoes(ss); return saida({ ok: true, gestor: true, hosps: OK }); }
+    if (p.op === 'censos') {
+      const lock = LockService.getScriptLock(); lock.waitLock(25000);
+      try { sincronizarCensos(ss, String(p.from || '')); } finally { lock.releaseLock(); }
+      return saida({ ok: true, now: Date.now(), censos: lerCensos(ss, String(p.from || '')).filter(c => pode(c.hosp)) });
+    }
+    if (p.op === 'acoes') { const a = lerAcoes(ss), o = {}; Object.keys(a).forEach(k => { if (pode(k.split('|')[0])) o[k] = a[k]; }); return saida({ ok: true, acoes: o }); }
+    if (p.op === 'codigos') { const c = {}; Object.keys(CODIGOS).forEach(k => { const h = CODIGOS[k] || 'hps'; if (pode(h)) c[h] = k; }); return saida({ ok: true, codigos: c }); }
+    if ((p.op === 'bc' || p.op === 'putCenso' || p.op === 'putAcao') && !pode(p.hosp)) return saida({ ok: false, erro: 'hosp' });
     if (p.op === 'bc') {
       const s = HOSP_SUF[String(p.hosp)]; if (s === undefined) return saida({ ok: false, erro: 'hosp' });
       return saida({ ok: true, bc: lerBC(ss, s ? 'pacientes ' + s : 'pacientes', String(p.from || '')) });
@@ -155,7 +168,7 @@ function lerBC(ss, nome, desde) {
     const dia = String(r[1]); if (!r[0] || dia < desde) return;
     let d = {}; try { d = JSON.parse(r[17]); } catch (x) { return; }
     (out[dia] = out[dia] || {})[String(r[0]).split('|')[1]] = { prev: d.prev || '', prevAntes: d.prevAntes || '', desfecho: d.desfecho || '', desfechoEm: d.desfechoEm || '',
-      falta: d.falta || '', pend: d.pend || '', naosaiu: d.naosaiu || '', dd: !!d.dd, visitador: (d.c && d.c.visitador) || '', atualizado: d.atualizado || '' };
+      falta: d.falta || '', pend: d.pend || '', naosaiu: d.naosaiu || '', hd: d.hd || '', mot: d.mot || [], por: d.por || '', tocado: d.tocado || '', presente: d.presente !== false, dd: !!d.dd, visitador: (d.c && d.c.visitador) || '', atualizado: d.atualizado || '' };
   });
   return out;
 }
@@ -171,4 +184,32 @@ function gravarAcao(ss, hosp, id, body) {
   const doc = Object.assign({}, antigo, body, { em: new Date().toISOString() });
   const linha = [chave, hosp, id, doc.nome || '', doc.texto || '', new Date(), JSON.stringify(doc)];
   if (i > 0) sh.getRange(i + 1, 1, 1, linha.length).setValues([linha]); else sh.appendRow(linha);
+}
+
+/* censos que as equipes já montaram no bate censo entram sozinhos no painel
+   (o censo arrastado no próprio painel tem prioridade e não é sobrescrito) */
+function sincronizarCensos(ss, desde) {
+  const sh = abaCensos(ss), v = sh.getDataRange().getValues(), idx = {};
+  v.forEach((r, k) => { if (k > 0 && r[0]) idx[String(r[0])] = k; });
+  Object.keys(HOSP_SUF).forEach(hosp => {
+    const s = HOSP_SUF[hosp], pac = ss.getSheetByName(s ? 'pacientes ' + s : 'pacientes'); if (!pac) return;
+    const porDia = {};
+    pac.getDataRange().getValues().slice(1).forEach(r => {
+      const dia = String(r[1]); if (!r[0] || dia < desde) return;
+      let d = {}; try { d = JSON.parse(r[17]); } catch (x) { return; }
+      if (d.presente === false || !d.c) return;
+      const c = d.c;
+      (porDia[dia] = porDia[dia] || []).push([String(r[0]).split('|')[1], c.unit || '', c.bed || '', c.name || '', c.conv || '', c.team || 'RP', c.dias == null ? null : c.dias, c.intern || '', c.prescriber || '', c.proc || '']);
+    });
+    Object.keys(porDia).forEach(dia => {
+      const chave = dia + '|' + hosp, k = idx[chave];
+      let meta = {};
+      if (k > 0) { try { meta = (JSON.parse(v[k][6]) || {}).meta || {}; } catch (x) {} if (meta.fonte !== 'bate censo') return; }
+      const pats = porDia[dia], json = JSON.stringify({ meta: { date: dia.slice(6, 8) + '/' + dia.slice(4, 6) + '/' + dia.slice(0, 4), fonte: 'bate censo' }, pats: pats });
+      if (k > 0 && String(v[k][6]) === json) return;
+      const linha = [chave, dia, hosp, dia.slice(6, 8) + '/' + dia.slice(4, 6) + '/' + dia.slice(0, 4), pats.length, new Date(), json];
+      if (k > 0) sh.getRange(k + 1, 1, 1, linha.length).setValues([linha]);
+      else { sh.appendRow(linha); idx[chave] = sh.getLastRow() - 1; v[idx[chave]] = linha; }
+    });
+  });
 }
