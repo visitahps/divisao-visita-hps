@@ -945,7 +945,7 @@ L.kanbanCensus = function (sheets, ref, units) {
       for (let r = h + 1; r < rows.length; r++) {
         const row = rows[r] || [], b = bedOf(row[iL]); if (!b) continue;
         const nome = String(row[iN] ?? '').split(',')[0].replace(/\s+/g, ' ').trim().toUpperCase();
-        if (L.norm(nome).length < 5 || /RESERVA|DESATIVAD|BLOQUEAD|EXEMPLO|INTERDIT/.test(L.norm(nome))) continue;
+        const nn = L.norm(nome); if (nn.length < 5 || !/\S+ \S+/.test(nn) || /RESERVA|DESATIVAD|BLOQUE|EXEMPLO|INTERDIT|ISOLAMENTO|APARTAMENTO|MANUTENC|LIMPEZA|HIGIENIZ|\bVAGO\b|CLOSTRI|CLOSTID|PRECAUC/.test(nn) || /^(LEITO|ALTA|OBITO|TRANSF|AGUARD)\b/.test(nn)) continue;
         const idade = iI >= 0 ? parseInt(String(row[iI] ?? ''), 10) : NaN;
         out.push({ unit, room: b.room, bed: b.bed, atend: iA >= 0 ? String(row[iA] ?? '').replace(/\D/g, '') : '', name: nome, conv: iC >= 0 ? String(row[iC] ?? '').replace(/\s+/g, ' ').trim() : '',
           prescriber: '', proc: '', idade: Number.isFinite(idade) ? idade : null, dias: iD >= 0 ? L.kbDias(row[iD], ref) : null, fromKanban: true });

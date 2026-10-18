@@ -763,7 +763,7 @@ L.norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').t
 L.title = s => String(s||'').toLowerCase().replace(/(^|\s)(\S)/g,(m,a,b)=>a+b.toUpperCase()).replace(/\b(Da|De|Do|Das|Dos|E)\b/g,w=>w.toLowerCase());
 L.RP_CONV = /NOTRE|INTERMEDICA|GNDI|HAPVIDA/;
 L.h = s => { let x = 2166136261 >>> 0; for (const c of 'hps|' + s) { x ^= c.charCodeAt(0); x = Math.imul(x, 16777619) >>> 0; } return x.toString(36); };
-L.FX = [['c92q21', '1w9om6l']];
+L.FX = [['c92q21', '1w9om6l'], ['1oztdlx', '1w9om6l']];
 L.PREF = [['1vekfli', '4'], ['1w9om6l', '4']];
 L.FXNOT = [['c92q21', ['1ksn3zk', '1vekfli']]];
 L.LV = ['1ksn3zk'];
@@ -872,7 +872,7 @@ L.kanbanCensus = function (sheets, ref, units) {
       for (let r = h + 1; r < rows.length; r++) {
         const row = rows[r] || [], b = bedOf(row[iL]); if (!b) continue;
         const nome = String(row[iN] ?? '').split(',')[0].replace(/\s+/g, ' ').trim().toUpperCase();
-        if (L.norm(nome).length < 5 || /RESERVA|DESATIVAD|BLOQUEAD|EXEMPLO|INTERDIT/.test(L.norm(nome))) continue;
+        const nn = L.norm(nome); if (nn.length < 5 || !/\S+ \S+/.test(nn) || /RESERVA|DESATIVAD|BLOQUE|EXEMPLO|INTERDIT|ISOLAMENTO|APARTAMENTO|MANUTENC|LIMPEZA|HIGIENIZ|\bVAGO\b|CLOSTRI|CLOSTID|PRECAUC/.test(nn) || /^(LEITO|ALTA|OBITO|TRANSF|AGUARD)\b/.test(nn)) continue;
         const idade = iI >= 0 ? parseInt(String(row[iI] ?? ''), 10) : NaN;
         out.push({ unit, room: b.room, bed: b.bed, atend: iA >= 0 ? String(row[iA] ?? '').replace(/\D/g, '') : '', name: nome, conv: iC >= 0 ? String(row[iC] ?? '').replace(/\s+/g, ' ').trim() : '',
           prescriber: '', proc: '', idade: Number.isFinite(idade) ? idade : null, dias: iD >= 0 ? L.kbDias(row[iD], ref) : null, fromKanban: true });
@@ -992,7 +992,7 @@ L.divide = function (patients, docs, history, fixed) {
   for (const p of patients) { p.cont = null; p.fixedDi = null; p.star = false; }
   // 1. vínculo fixo
   for (const p of patients) {
-    const hp = L.h(L.norm(p.name)), fx = (H.id === 'hps' ? L.FX : []).find(f => f[0] === hp); if (!fx) continue;
+    const nn = L.norm(p.name), hs = [L.h(nn), L.h(nn.split(' ').slice(0, 2).join(' '))], fx = (H.id === 'hps' ? L.FX : []).find(f => hs.includes(f[0])); if (!fx) continue;
     const d = st.find(d => L.docHs(d.name).includes(fx[1]));
     if (d) { p.fixedDi = d.i; put(p, d.i); }
   }
@@ -1010,11 +1010,26 @@ L.divide = function (patients, docs, history, fixed) {
   const allowed = (p, di) => di >= 0 && !bannedFor(p)(di) && !(prefOf(st[di]) && fl(p) !== prefOf(st[di]));
   const hrow = (day, p) => { const nn = L.norm(p.name); return day.rows.find(r => (r.atend && p.atend && r.atend === p.atend) || (nn.length >= 6 && r.nn && (r.nn.startsWith(nn) || nn.startsWith(r.nn)))); };
   const mark = (p, b) => { if (b.div) p.cont = { di: b.di, date: b.date }; if (L.docMatches(st[b.di].name, p.prescriber)) p.star = true; };
+  // quem entra no lugar de um colega da divisão de ontem que não está hoje herda os pacientes (e o andar) dele: mesma equipe primeiro
+  const lastDay = (history || []).find(d => (d.age ?? 1) <= 2) || null, subOf = new Map(), subTxt = [];
+  if (lastDay) {
+    const yd = new Map(); for (const r of lastDay.rows) { const k = L.norm(r.doc); if (!yd.has(k)) yd.set(k, { name: r.doc, team: r.team, n: 0 }); yd.get(k).n++; }
+    const absent = [...yd.values()].filter(d => docIdx(d.name) < 0).sort((a, b) => b.n - a.n);
+    const fresh = st.filter(d => ![...yd.values()].some(y => L.docMatches(d.name, y.name) || L.docMatches(y.name, d.name)));
+    const used = new Set();
+    for (const same of [true, false]) for (const a of absent) {
+      if (subOf.has(L.norm(a.name))) continue;
+      const f = fresh.find(f => !used.has(f.i) && (!same || f.team === a.team)); if (!f) continue;
+      subOf.set(L.norm(a.name), f.i); used.add(f.i); subTxt.push(`${L.title(f.name)} ficou no lugar de ${L.title(a.name)} (pacientes e andar da divisão de ${lastDay.date.slice(0, 5)})`);
+    }
+  }
+  const histDoc = (day, r) => { const di = docIdx(r.doc); if (di >= 0 || day !== lastDay) return di; const s = subOf.get(L.norm(r.doc)); return s == null ? -1 : s; };
+  if (subTxt.length) res.notes.push({ t: 'regra', s: subTxt.join('; ') + '.' });
   const later = [], older = []; let divOverPresc = 0;
   for (const p of patients) {
     if (res.assign.has(p)) continue;
     let best = null;
-    (history || []).forEach((day, k) => { const r = hrow(day, p); if (!r) return; const di = docIdx(r.doc); if (!allowed(p, di)) return; const a = day.age ?? (k + 1); if (!best || a < best.age) best = { di, age: a, date: day.date, div: true }; });
+    (history || []).forEach((day, k) => { const r = hrow(day, p); if (!r) return; const di = histDoc(day, r); if (!allowed(p, di)) return; const a = day.age ?? (k + 1); if (!best || a < best.age) best = { di, age: a, date: day.date, div: true }; });
     const s = st.findIndex(d => L.docMatches(d.name, p.prescriber));
     if (allowed(p, s) && (!best || best.age >= 2)) best = { di: s, age: 1.5, div: false };
     if (!best) continue;
@@ -1109,7 +1124,7 @@ L.divide = function (patients, docs, history, fixed) {
     const brk = ps.filter(p => p.home != null && p.home !== i).length;
     const offPref = pr ? ps.filter(p => fl(p) !== pr && p.fixedDi == null).length : 0;
     const lv = lvOf(st[i]) ? ps.reduce((a, p) => a + cx(p), 0) : 0;
-    return 1e6 * ban + 5000 * offPref + 500 * brk + 60 * (floors.size - 1) + 20 * (Object.keys(cnt).length - 1) + (ps.length - top) + 1.5 * wrong + 150 * lv;
+    return 1e6 * ban + 5000 * offPref + 2000 * brk + 60 * (floors.size - 1) + 20 * (Object.keys(cnt).length - 1) + (ps.length - top) + 1.5 * wrong + 150 * lv;
   };
   const lvOf = d => H.id === 'hps' && L.docHs(d.name).some(h => L.LV.includes(h));
   const cx = p => (p.idade >= 80 ? 3 : p.idade >= 70 ? 2 : p.idade >= 60 ? 1 : 0) + (p.dias >= 10 ? 3 : p.dias >= 5 ? 2 : p.dias >= 3 ? 1 : 0) + (p.uti ? 3 : 0);
