@@ -910,6 +910,52 @@ L.parseCensus = function (items) {
   return { unit: units[0] || null, units, patients: pats };
 };
 
+/* ---------- sem censo: leitos tirados das abas dos andares do kanban ---------- */
+/* data no nome do arquivo (ex.: "Kanban 18-10.xlsx"); senão, hoje */
+L.kbDate = name => { const m = String(name || '').match(/(?:^|\D)(\d{2})[-_.](\d{2})(?:[-_.](\d{2,4}))?(?!\d)/); const t = new Date();
+  const ok = m && +m[1] >= 1 && +m[1] <= 31 && +m[2] >= 1 && +m[2] <= 12;
+  const y = ok && m[3] ? (+m[3] < 100 ? 2000 + +m[3] : +m[3]) : t.getFullYear();
+  const d = ok ? new Date(y, +m[2] - 1, +m[1]) : t; const p = n => String(n).padStart(2, '0');
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear(); };
+/* dias de internação a partir da data de admissão do kanban (aceita dia e mês trocados pelo Excel) */
+L.kbDias = (v, ref) => {
+  const s = String(v ?? '').trim(); if (!s || !ref) return null;
+  let a, b, y, m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) { y = +m[1]; a = +m[3]; b = +m[2]; }
+  else if ((m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})(?:[\/.\-](\d{2,4}))?/))) { a = +m[1]; b = +m[2]; y = m[3] ? (+m[3] < 100 ? 2000 + +m[3] : +m[3]) : ref.getFullYear(); }
+  else return null;
+  const c = [[a, b], [b, a]].filter(([d, mo]) => mo >= 1 && mo <= 12 && d >= 1 && d <= 31).map(([d, mo]) => new Date(y, mo - 1, d)).filter(x => x <= ref && ref - x < 400 * 864e5).sort((p, q) => q - p);
+  return c.length ? Math.round((ref - c[0]) / 864e5) : null;
+};
+L.kanbanCensus = function (sheets, ref, units) {
+  const out = [];
+  for (const [sname, rows] of Object.entries(sheets)) {
+    const um = L.norm(sname).match(/(\d)\s*O?\s*ANDAR\s*([AB])\b/); if (!um) continue;
+    const unit = um[1] + um[2]; if (units && !units.includes(unit)) continue;
+    for (let h = 0; h < Math.min(rows.length, 8); h++) {
+      const hr = (rows[h] || []).map(c => L.norm(c));
+      const iN = hr.findIndex(c => /^NOME/.test(c)); if (iN < 0) continue;
+      const ix = re => hr.findIndex(c => re.test(c));
+      const iA = ix(/^ATEND/), iI = ix(/^IDADE/), iC = ix(/^CONV/);
+      const bedOf = v => { const t = String(v ?? '').toUpperCase().replace(/[\s\-]/g, ''); const m = t.match(/^(\d{3})([AB])?$/); return m ? { room: m[1], bed: m[1] + (m[2] || '') } : null; };
+      let iL = ix(/^LEITO/);
+      if (iL < 0) { let best = -1, bn = 0; for (let c = 0; c < iN; c++) { const n = rows.slice(h + 1).filter(r => r && bedOf(r[c])).length; if (n > bn) { bn = n; best = c; } } iL = best; }
+      if (iL < 0) break;
+      let iD = ix(/ADMISS|INTERN|^DATA DE I/); if (iD < 0 && iN - 1 !== iL && iN - 1 >= 0) iD = iN - 1;
+      for (let r = h + 1; r < rows.length; r++) {
+        const row = rows[r] || [], b = bedOf(row[iL]); if (!b) continue;
+        const nome = String(row[iN] ?? '').split(',')[0].replace(/\s+/g, ' ').trim().toUpperCase();
+        if (L.norm(nome).length < 5 || /RESERVA|DESATIVAD|BLOQUEAD|EXEMPLO|INTERDIT/.test(L.norm(nome))) continue;
+        const idade = iI >= 0 ? parseInt(String(row[iI] ?? ''), 10) : NaN;
+        out.push({ unit, room: b.room, bed: b.bed, atend: iA >= 0 ? String(row[iA] ?? '').replace(/\D/g, '') : '', name: nome, conv: iC >= 0 ? String(row[iC] ?? '').replace(/\s+/g, ' ').trim() : '',
+          prescriber: '', proc: '', idade: Number.isFinite(idade) ? idade : null, dias: iD >= 0 ? L.kbDias(row[iD], ref) : null, fromKanban: true });
+      }
+      break;
+    }
+  }
+  return out;
+};
+
 L.parseKanban = function (sheets) {
   const out = [];
   for (const [sname, rows] of Object.entries(sheets)) {
@@ -1200,17 +1246,28 @@ async function handleFiles(list) {
       } else if (/\.xlsx?$/i.test(f.name)) {
         const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' });
         const sheets = {}; for (const n of wb.SheetNames) sheets[n] = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: null, raw: false });
-        S.kanban = L.parseKanban(sheets); S.kanbanName = f.name;
+        S.kanban = L.parseKanban(sheets); S.kanbanName = f.name; S.kbSheets = sheets;
       }
     } catch (e) { setStatus('buildStatus', 'Não consegui ler ' + f.name + ': ' + (e.message || e), true); }
   }
   renderFiles();
 }
+/* posto sem censo anexado: usa os leitos do kanban */
+function fillFromKanban() {
+  for (const u of Object.keys(S.census)) if (S.census[u].fromKanban) delete S.census[u];
+  if (!H.kanban || !S.kbSheets) return;
+  const miss = UNITS.filter(u => !S.census[u]); if (!miss.length) return;
+  const real = UNITS.map(u => S.census[u]?.date).filter(Boolean)[0];
+  const date = real ? real.slice(0, 10) : L.kbDate(S.kanbanName), ref = D.parse(date);
+  const ps = L.kanbanCensus(S.kbSheets, ref, miss);
+  for (const u of miss) { const x = ps.filter(p => p.unit === u); if (x.length) S.census[u] = { file: 'kanban', patients: x, date, fromKanban: true }; }
+}
 function renderFiles() {
+  fillFromKanban();
   const dates = UNITS.map(u => S.census[u]?.date).filter(Boolean);
   S.censusDate = dates.sort((a, b) => D.key(D.parse(b)).localeCompare(D.key(D.parse(a))))[0] || '';
   const diff = new Set(dates).size > 1;
-  let h = UNITS.map(u => { const c = S.census[u]; return `<li><span>Censo ${u}${c ? ' · ' + esc(c.date) : ''}</span>${c ? `<span class="ok">${c.patients.length} pacientes</span>` : '<span class="bad">falta</span>'}</li>`; }).join('');
+  let h = UNITS.map(u => { const c = S.census[u]; if (c && c.fromKanban) return `<li><span>Censo ${u} · sem PDF, leitos do kanban</span><span class="bad">${c.patients.length} pelo kanban</span></li>`; return `<li><span>Censo ${u}${c ? ' · ' + esc(c.date) : ''}</span>${c ? `<span class="ok">${c.patients.length} pacientes</span>` : '<span class="bad">falta</span>'}</li>`; }).join('');
   if (H.kanban) h += `<li><span>Kanban</span>${S.kanban ? `<span class="ok">${S.kanban.length} linhas</span>` : '<span class="bad">opcional, mas recomendado</span>'}</li>`;
   $('fileList').innerHTML = h;
   const n = UNITS.filter(u => S.census[u]).length;
@@ -1219,6 +1276,8 @@ function renderFiles() {
   $('build').textContent = !n ? 'Montar bate censo' : S.days.some(d => d.id === k) ? `Atualizar o censo de ${S.censusDate.slice(0, 5)}` : `Montar bate censo de ${S.censusDate.slice(0, 5)}`;
   if (diff) setStatus('buildStatus', 'Os censos têm datas diferentes. Vou usar a mais recente: ' + S.censusDate + '.', true);
   else if (n && n < UNITS.length) setStatus('buildStatus', `Faltam ${UNITS.length - n} posto(s). Dá para montar assim e completar depois.`);
+  const kb = UNITS.filter(u => S.census[u]?.fromKanban);
+  if (kb.length) setStatus('buildStatus', `Sem censo de ${kb.join(', ')}: usando os leitos do kanban. Confira altas e admissões que o kanban ainda não mostra.`, true);
 }
 function setStatus(id, msg, err) { const el = $(id); if (!el) return; el.textContent = msg || ''; el.classList.toggle('err', !!err); }
 

@@ -837,6 +837,52 @@ L.parseKanban = function (sheets) {
   return out;
 };
 
+/* ---------- sem censo: leitos tirados das abas dos andares do kanban ---------- */
+/* data no nome do arquivo (ex.: "Kanban 18-10.xlsx"); senão, hoje */
+L.kbDate = name => { const m = String(name || '').match(/(?:^|\D)(\d{2})[-_.](\d{2})(?:[-_.](\d{2,4}))?(?!\d)/); const t = new Date();
+  const ok = m && +m[1] >= 1 && +m[1] <= 31 && +m[2] >= 1 && +m[2] <= 12;
+  const y = ok && m[3] ? (+m[3] < 100 ? 2000 + +m[3] : +m[3]) : t.getFullYear();
+  const d = ok ? new Date(y, +m[2] - 1, +m[1]) : t; const p = n => String(n).padStart(2, '0');
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear(); };
+/* dias de internação a partir da data de admissão do kanban (aceita dia e mês trocados pelo Excel) */
+L.kbDias = (v, ref) => {
+  const s = String(v ?? '').trim(); if (!s || !ref) return null;
+  let a, b, y, m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) { y = +m[1]; a = +m[3]; b = +m[2]; }
+  else if ((m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})(?:[\/.\-](\d{2,4}))?/))) { a = +m[1]; b = +m[2]; y = m[3] ? (+m[3] < 100 ? 2000 + +m[3] : +m[3]) : ref.getFullYear(); }
+  else return null;
+  const c = [[a, b], [b, a]].filter(([d, mo]) => mo >= 1 && mo <= 12 && d >= 1 && d <= 31).map(([d, mo]) => new Date(y, mo - 1, d)).filter(x => x <= ref && ref - x < 400 * 864e5).sort((p, q) => q - p);
+  return c.length ? Math.round((ref - c[0]) / 864e5) : null;
+};
+L.kanbanCensus = function (sheets, ref, units) {
+  const out = [];
+  for (const [sname, rows] of Object.entries(sheets)) {
+    const um = L.norm(sname).match(/(\d)\s*O?\s*ANDAR\s*([AB])\b/); if (!um) continue;
+    const unit = um[1] + um[2]; if (units && !units.includes(unit)) continue;
+    for (let h = 0; h < Math.min(rows.length, 8); h++) {
+      const hr = (rows[h] || []).map(c => L.norm(c));
+      const iN = hr.findIndex(c => /^NOME/.test(c)); if (iN < 0) continue;
+      const ix = re => hr.findIndex(c => re.test(c));
+      const iA = ix(/^ATEND/), iI = ix(/^IDADE/), iC = ix(/^CONV/);
+      const bedOf = v => { const t = String(v ?? '').toUpperCase().replace(/[\s\-]/g, ''); const m = t.match(/^(\d{3})([AB])?$/); return m ? { room: m[1], bed: m[1] + (m[2] || '') } : null; };
+      let iL = ix(/^LEITO/);
+      if (iL < 0) { let best = -1, bn = 0; for (let c = 0; c < iN; c++) { const n = rows.slice(h + 1).filter(r => r && bedOf(r[c])).length; if (n > bn) { bn = n; best = c; } } iL = best; }
+      if (iL < 0) break;
+      let iD = ix(/ADMISS|INTERN|^DATA DE I/); if (iD < 0 && iN - 1 !== iL && iN - 1 >= 0) iD = iN - 1;
+      for (let r = h + 1; r < rows.length; r++) {
+        const row = rows[r] || [], b = bedOf(row[iL]); if (!b) continue;
+        const nome = String(row[iN] ?? '').split(',')[0].replace(/\s+/g, ' ').trim().toUpperCase();
+        if (L.norm(nome).length < 5 || /RESERVA|DESATIVAD|BLOQUEAD|EXEMPLO|INTERDIT/.test(L.norm(nome))) continue;
+        const idade = iI >= 0 ? parseInt(String(row[iI] ?? ''), 10) : NaN;
+        out.push({ unit, room: b.room, bed: b.bed, atend: iA >= 0 ? String(row[iA] ?? '').replace(/\D/g, '') : '', name: nome, conv: iC >= 0 ? String(row[iC] ?? '').replace(/\s+/g, ' ').trim() : '',
+          prescriber: '', proc: '', idade: Number.isFinite(idade) ? idade : null, dias: iD >= 0 ? L.kbDias(row[iD], ref) : null, fromKanban: true });
+      }
+      break;
+    }
+  }
+  return out;
+};
+
 L.CM_PART = /^(CLINICA MEDICA|CLINICA|CM|CN|C M|MEDICINA INTERNA|PALIATIVO|PALIATIVA|CUIDADOS PALIATIVOS|MEDICINA PALIATIVA|MEDICINA HOSPITALAR|HOSPITALISTA)$/;
 L.ESP_PART = /ORTOP|CIRUR|^CG$|VASC|CARDIO|UROL|^GO$|GINEC|OBST|BUCO|MAXILO|NEURO|OTORR|^ORL$|PROCTO|COLOPROCT|TORAC|PLAST|OFTALM|^CCV$|MASTO|HEMODIN|CABECA E PESCOCO/;
 L.classify = function (spec) {
@@ -959,16 +1005,26 @@ L.divide = function (patients, docs, history, fixed) {
   };
   // folga dos médicos VS: vagas VS livres menos pacientes VS ainda sem médico
   const vsSlack = () => st.filter(d => d.team === 'VS').reduce((a, d) => a + Math.max(0, d.target - d.n), 0) - patients.filter(p => p.team === 'VS' && !res.assign.has(p)).length;
-  // 2a. quem passou visita ontem (censo) fica com o paciente
-  const later = [];
+  // 2a. continuidade. O nome impresso no censo é de quem PRESCREVEU, e nem sempre é quem acompanhou;
+  //     por isso a divisão do dia anterior vale mais. Ordem: divisão de ontem > quem prescreveu ontem > divisões mais antigas (até 7 dias).
+  const allowed = (p, di) => di >= 0 && !bannedFor(p)(di) && !(prefOf(st[di]) && fl(p) !== prefOf(st[di]));
+  const hrow = (day, p) => { const nn = L.norm(p.name); return day.rows.find(r => (r.atend && p.atend && r.atend === p.atend) || (nn.length >= 6 && r.nn && (r.nn.startsWith(nn) || nn.startsWith(r.nn)))); };
+  const mark = (p, b) => { if (b.div) p.cont = { di: b.di, date: b.date }; if (L.docMatches(st[b.di].name, p.prescriber)) p.star = true; };
+  const later = [], older = []; let divOverPresc = 0;
   for (const p of patients) {
     if (res.assign.has(p)) continue;
+    let best = null;
+    (history || []).forEach((day, k) => { const r = hrow(day, p); if (!r) return; const di = docIdx(r.doc); if (!allowed(p, di)) return; const a = day.age ?? (k + 1); if (!best || a < best.age) best = { di, age: a, date: day.date, div: true }; });
     const s = st.findIndex(d => L.docMatches(d.name, p.prescriber));
-    if (s < 0 || bannedFor(p)(s) || (prefOf(st[s]) && fl(p) !== prefOf(st[s]))) continue;
+    if (allowed(p, s) && (!best || best.age >= 2)) best = { di: s, age: 1.5, div: false };
+    if (!best) continue;
+    if (best.age >= 2) { older.push({ p, ...best }); continue; }
+    if (best.div && s >= 0 && s !== best.di) divOverPresc++;
     // paciente RP com médico VS: só mantém se sobrar vaga depois dos pacientes VS
-    if (mixed && p.team === 'RP' && st[s].team === 'VS') { later.push([p, s]); continue; }
-    p.star = true; put(p, s);
+    if (mixed && p.team === 'RP' && st[best.di].team === 'VS') { later.push([p, best]); continue; }
+    mark(p, best); put(p, best.di);
   }
+  if (divOverPresc) res.notes.push({ t: 'regra', s: `${divOverPresc} paciente(s) ficaram com o médico da divisão de ontem, embora outro médico tenha prescrito.` });
   // total justo (diferença máxima de 1)
   const base = Math.floor(N / D); let extra = N % D;
   for (const d of st) d.target = base;
@@ -989,31 +1045,20 @@ L.divide = function (patients, docs, history, fixed) {
     if (moved) res.notes.push({ t: 'regra', s: `Há mais pacientes VS do que a cota dos médicos VS: eles ficaram com ${moved} paciente(s) a mais, porque médico RP não recebe VS.` });
   }
   let released = 0;
-  for (const [p, s] of later) {
-    if (st[s].n < st[s].target && vsSlack() > 0) { p.star = true; put(p, s); } else released++;
+  for (const [p, b] of later) {
+    if (st[b.di].n < st[b.di].target && vsSlack() > 0) { mark(p, b); put(p, b.di); } else released++;
   }
   if (released) res.notes.push({ t: 'regra', s: `${released} paciente(s) RP que estavam com médico VS foram para médico RP, para o médico VS ficar com os pacientes VS.` });
-  // 2b. memória: quem viu o paciente mais recentemente nos dias anteriores (até a cota)
-  if (history && history.length) {
-    res.histUsed = history.map(h => h.date);
-    const cands = [];
-    for (const p of patients) {
-      if (res.assign.has(p)) continue;
-      const nn = L.norm(p.name), sc = new Map(), last = new Map();
-      history.forEach((day, k) => {
-        const r = day.rows.find(r => (r.atend && p.atend && r.atend === p.atend) || (nn.length >= 6 && r.nn && (r.nn.startsWith(nn) || nn.startsWith(r.nn))));
-        if (!r) return; const di = docIdx(r.doc); if (di < 0 || bannedFor(p)(di) || (prefOf(st[di]) && fl(p) !== prefOf(st[di]))) return;
-        if (!sc.has(di)) { sc.set(di, 100 - k); last.set(di, day.date); }
-        sc.set(di, sc.get(di) + 0.01);
-      });
-      if (sc.size) { const [di, v] = [...sc.entries()].sort((a, b) => b[1] - a[1])[0]; cands.push({ p, di, v, date: last.get(di) }); }
-    }
+  // 2b. memória: divisões de 2 a 7 dias atrás, quando nem a divisão de ontem nem quem prescreveu estão na escala (até a cota)
+  if (history && history.length) res.histUsed = history.map(h => h.date);
+  if (older.length) {
     let kept = 0, skipped = 0;
-    for (const c of cands.sort((a, b) => b.v - a.v)) {
+    for (const c of older.sort((a, b) => a.age - b.age)) {
+      if (res.assign.has(c.p)) continue;
       if (st[c.di].n >= st[c.di].target || (mixed && c.p.team === 'RP' && st[c.di].team === 'VS' && vsSlack() <= 0)) { skipped++; continue; }
       c.p.cont = { di: c.di, date: c.date }; put(c.p, c.di); kept++;
     }
-    if (kept) res.notes.push({ t: 'regra', s: `${kept} paciente(s) mantido(s) com o mesmo médico dos dias anteriores (memória).` });
+    if (kept) res.notes.push({ t: 'regra', s: `${kept} paciente(s) mantido(s) com o médico das divisões dos dias anteriores (memória).` });
     if (skipped) res.notes.push({ t: 'regra', s: `${skipped} paciente(s) com histórico não couberam na cota do médico e foram redistribuídos.` });
   }
   // 3. restante: mesmo andar e mesmo posto (preferência de andar por médico)
@@ -1163,10 +1208,32 @@ async function saveHandoff() {
 }
 applyHosp();
 document.getElementById('hospSel').addEventListener('change', e => { switchHosp(e.target.value); rebuild(); });
-function histForDivide() {
+const ageOf = (today, d) => { const k = dkey(d); if (!today || !k) return null; const t = new Date(+today.slice(0, 4), +today.slice(4, 6) - 1, +today.slice(6, 8)), x = new Date(+k.slice(0, 4), +k.slice(4, 6) - 1, +k.slice(6, 8)); return Math.round((t - x) / 864e5); };
+/* divisões dos dias anteriores guardadas na planilha pelo bate censo (médico da divisão de cada paciente).
+   Servem quando a divisão de ontem foi feita em outro aparelho. Só para a continuidade, não para classificar CM. */
+function prefetchSheetHist() {
+  const today = dkey(S.censusDate), key = H.id + today; if (!today || window.claude || (S.sheetHist && S.sheetHist.key === key)) return S.sheetHist?.p;
+  let c = null; try { c = JSON.parse(localStorage.getItem(nsKey('hps-planilha')) || 'null'); } catch (e) {}
+  if (!c || !c.u || !c.c) return null;
+  const call = async b => { const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 25000); try { const r = await fetch(c.u + '?' + new URLSearchParams({ ...b, code: c.c }), { signal: ctl.signal, cache: 'no-store' }); const j = await r.json(); if (!j.ok) throw new Error(j.erro || 'erro'); return j; } finally { clearTimeout(tm); } };
+  const sh = S.sheetHist = { key, days: [], done: false };
+  sh.p = (async () => {
+    try {
+      const ds = ((await call({ op: 'days' })).days || []).map(d => d.id).filter(k => k < today && ageOf(today, k.slice(6) + '/' + k.slice(4, 6) + '/' + k.slice(0, 4)) <= 7).sort().reverse().slice(0, 7);
+      const got = await Promise.all(ds.map(k => call({ op: 'day', day: k, since: 0 }).then(j => [k, j.pats || {}]).catch(() => [k, {}])));
+      sh.days = got.map(([k, pats]) => ({ date: k.slice(6) + '/' + k.slice(4, 6) + '/' + k.slice(0, 4), fonte: 'planilha',
+        rows: Object.entries(pats).filter(([, d]) => d && d.c && d.c.visitador && d.presente !== false).map(([id, d]) => ({ doc: d.c.visitador, bed: d.c.bed || '', name: d.c.name || '', atend: /^\d+$/.test(id) ? id : '' })) })).filter(d => d.rows.length);
+    } catch (e) {}
+    sh.done = true;
+  })();
+  return sh.p;
+}
+function histForDivide(withSheet) {
   const today = dkey(S.censusDate);
   const lim = today ? (() => { const d = new Date(+today.slice(0, 4), +today.slice(4, 6) - 1, +today.slice(6, 8) - 7); return '' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0'); })() : '';
-  return S.hist.filter(h => !today || (dkey(h.date) < today && dkey(h.date) >= lim)).slice(0, 7).map(h => ({ date: h.date, rows: h.rows.map(r => ({ ...r, nn: L.norm(r.name) })) }));
+  const loc = S.hist.filter(h => !today || (dkey(h.date) < today && dkey(h.date) >= lim));
+  const extra = withSheet && S.sheetHist && S.sheetHist.key === H.id + today ? S.sheetHist.days.filter(d => !loc.some(h => h.date === d.date)) : [];
+  return loc.concat(extra).sort((a, b) => dkey(b.date).localeCompare(dkey(a.date))).slice(0, 7).map(h => ({ date: h.date, age: ageOf(today, h.date), rows: h.rows.map(r => ({ ...r, nn: L.norm(r.name) })) }));
 }
 function importDivision(wb) {
   const name = wb.SheetNames.find(n => /^DIVIS/.test(L.norm(n))); if (!name) return false;
@@ -1248,7 +1315,7 @@ async function handleFiles(list) {
         const imp = importDivision(wb);
         if (imp) { setStatus('goStatus', `Divisão de ${imp} carregada na memória.`); continue; }
         const sheets = {}; for (const n of wb.SheetNames) sheets[n] = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: null, raw: false });
-        S.raw = S.raw || {}; S.raw.kanban = f; S.kanban = L.parseKanban(sheets); S.kanbanName = f.name;
+        S.raw = S.raw || {}; S.raw.kanban = f; S.kanban = L.parseKanban(sheets); S.kanbanName = f.name; S.kbSheets = sheets;
       }
     } catch (e) { errs.push('Não consegui ler ' + f.name + ': ' + (e.message || e)); }
   }
@@ -1259,6 +1326,7 @@ function renderFiles() {
   const units = H.units;
   let h = units.map(u => {
     const c = S.census[u];
+    if (c && c.fromKanban) return `<li><span>Censo ${u} <span style="color:var(--muted)">(sem PDF: leitos do kanban)</span></span><span class="bad">${c.patients.length} pelo kanban</span></li>`;
     return `<li><span>Censo ${u}${c ? ' <span style="color:var(--muted)">(' + esc(c.file) + ')</span>' : ''}</span>${c ? `<span class="ok">${c.patients.length} pacientes</span>` : '<span class="bad">falta</span>'}</li>`;
   }).join('');
   const extra = Object.keys(S.census).filter(u => !units.includes(u));
@@ -1269,7 +1337,19 @@ function renderFiles() {
 }
 
 /* ---------- pacientes ---------- */
+/* posto sem censo anexado: usa os leitos do kanban (a data vem do nome do arquivo do kanban, ou hoje) */
+function fillFromKanban() {
+  for (const u of Object.keys(S.census)) if (S.census[u].fromKanban) delete S.census[u];
+  if (!H.kanban || !S.kbSheets) return;
+  const miss = H.units.filter(u => !S.census[u]); if (!miss.length) return;
+  if (!S.censusDate) S.censusDate = L.kbDate(S.kanbanName);
+  const ref = (k => k ? new Date(+k.slice(0, 4), +k.slice(4, 6) - 1, +k.slice(6, 8)) : new Date())(dkey(S.censusDate));
+  const ps = L.kanbanCensus(S.kbSheets, ref, miss);
+  for (const u of miss) { const x = ps.filter(p => p.unit === u); if (x.length) S.census[u] = { file: 'kanban', patients: x, fromKanban: true }; }
+}
+const kbUnits = () => H.units.filter(u => S.census[u]?.fromKanban);
 function rebuild() {
+  fillFromKanban();
   const census = H.units.flatMap(u => S.census[u]?.patients || []);
   S.patients = L.buildPatients(census, S.kanban || [], histForDivide()).map(p => {
     p.id = pid(p);
@@ -1384,9 +1464,11 @@ $('review').addEventListener('change', e => {
 function updateGo() {
   const units = H.units.filter(u => S.census[u]);
   const named = S.docs.filter(d => d.name.trim());
+  if (units.length) try { prefetchSheetHist(); } catch (e) {}
   const ok = units.length > 0 && named.length > 0;
   $('go').disabled = !ok;
   if (!units.length) setStatus('goStatus', '');
+  else if (kbUnits().length) setStatus('goStatus', `Sem censo de ${kbUnits().join(', ')}: a divisão usa os leitos do kanban${kbUnits().length === H.units.length ? ' (data ' + S.censusDate.slice(0, 5) + ')' : ''}. Confira altas e admissões que o kanban ainda não mostra.`, true);
   else if (units.length < H.units.length) setStatus('goStatus', `Faltam censos: ${H.units.filter(u => !S.census[u]).join(', ')}. Dá para dividir assim mesmo.`, true);
   else if (H.kanban && !S.kanban) setStatus('goStatus', 'Sem kanban, todos contam como CM, exceto procedimentos de especialidade do censo.', true);
   else setStatus('goStatus', '');
@@ -1394,13 +1476,20 @@ function updateGo() {
 function setStatus(id, msg, err) { const el = $(id); el.textContent = msg; el.classList.toggle('err', !!err); }
 
 /* ---------- divisão ---------- */
-$('go').onclick = () => {
+$('go').onclick = async () => {
   const docs = S.docs.filter(d => d.name.trim()).map(d => ({ name: d.name.trim(), team: d.team }));
+  const pr = prefetchSheetHist();
+  if (pr && !S.sheetHist.done) {
+    $('go').disabled = true; setStatus('goStatus', 'Buscando as divisões dos dias anteriores na planilha…');
+    await Promise.race([pr, new Promise(r => setTimeout(r, 15000))]);
+    $('go').disabled = false; setStatus('goStatus', '');
+  }
   S.activeDocs = docs;
-  const r = L.divide(S.patients, docs, histForDivide(), []);
+  const r = L.divide(S.patients, docs, histForDivide(true), []);
   S.histUsed = r.histUsed || [];
   S.assign = new Map(); for (const [p, i] of r.assign) S.assign.set(p.id, i);
   S.ruleNotes = r.notes.filter(n => n.t === 'regra'); S.moved = 0;
+  if (kbUnits().length) S.ruleNotes.unshift({ t: 'regra', s: `Sem censo de ${kbUnits().join(', ')}: leitos tirados do kanban (sem o médico que prescreveu; a continuidade vem das divisões anteriores). Confira altas e admissões recentes.` });
   saveToday(); renderBoard(); renderReview();
   $('board').scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
@@ -1454,7 +1543,7 @@ function renderBoard() {
         <select data-mv="${esc(p.id)}" aria-label="Mover ${esc(p.name)}">${docs.map((o, j) => `<option value="${j}" ${j === i ? 'selected' : ''}>${esc(o.name.split(' ')[0])}</option>`).join('')}</select></div>`;
     }
     return `<article class="col ${d.team.toLowerCase()}"><header><div class="nm"><span>${esc(d.name)}</span><span class="team">${d.team}</span></div>
-      <div class="counts"><span><b>${s.ps.length}</b>pacientes</span><span><b>${s.cm}</b>CM</span><span><b>${s.esp}</b>cir.</span><span><b>${s.star}</b>já acomp.</span><span><b>${s.cont}</b>contin.</span></div></header>${rows || '<div class="pt"><div></div><div class="who m">Sem pacientes</div></div>'}</article>`;
+      <div class="counts"><span><b>${s.ps.length}</b>pacientes</span><span><b>${s.cm}</b>CM</span><span><b>${s.esp}</b>esp.</span><span><b>${s.star}</b>já acomp.</span><span><b>${s.cont}</b>contin.</span></div></header>${rows || '<div class="pt"><div></div><div class="who m">Sem pacientes</div></div>'}</article>`;
   }).join('');
   const nt = allNotes();
   const li = a => a.map(x => `<li>${esc(x)}</li>`).join('');
