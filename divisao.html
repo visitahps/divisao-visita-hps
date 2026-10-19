@@ -1001,12 +1001,14 @@ L.divide = function (patients, docs, history, fixed) {
     const d = st.find(d => L.docHs(d.name).includes(fx[1]));
     if (d) { p.fixedDi = d.i; put(p, d.i); }
   }
-  // regra: médico RP não recebe paciente VS (quando há médico VS no dia)
+  // regra: paciente VS vai para médico VS enquanto houver vaga neles; quando os médicos VS já estão com a cota cheia
+  // (mesmo número de pacientes para todos), o excedente VS vai para médico RP.
   const mixed = st.some(d => d.team === 'VS') && st.some(d => d.team === 'RP');
+  const vsCap = () => st.filter(d => d.team === 'VS').reduce((a, d) => a + Math.max(0, (d.target ?? Infinity) - d.n), 0);
   const bannedFor = p => {
     const r = (H.id === 'hps' ? L.FXNOT : []).find(r => r[0] === L.h(L.norm(p.name)));
     const fx = r ? (i => L.docHs(st[i].name).some(h => r[1].includes(h))) : (() => false);
-    return mixed && p.team === 'VS' ? (i => st[i].team === 'RP' || fx(i)) : fx;
+    return mixed && p.team === 'VS' ? (i => (st[i].team === 'RP' && vsCap() > 0) || fx(i)) : fx;
   };
   // folga dos médicos VS: vagas VS livres menos pacientes VS ainda sem médico
   const vsSlack = () => st.filter(d => d.team === 'VS').reduce((a, d) => a + Math.max(0, d.target - d.n), 0) - patients.filter(p => p.team === 'VS' && !res.assign.has(p)).length;
@@ -1030,7 +1032,7 @@ L.divide = function (patients, docs, history, fixed) {
   }
   const histDoc = (day, r) => { const di = docIdx(r.doc); if (di >= 0 || day !== lastDay) return di; const s = subOf.get(L.norm(r.doc)); return s == null ? -1 : s; };
   if (subTxt.length) res.notes.push({ t: 'regra', s: subTxt.join('; ') + '.' });
-  const later = [], older = []; let divOverPresc = 0, backPrev = 0;
+  const later = [], older = [], cand = []; let divOverPresc = 0, backPrev = 0, overQ = 0;
   for (const p of patients) {
     if (res.assign.has(p)) continue;
     // soma das evidências: divisão de ontem 3, de anteontem 1,5, de 3 dias 1...; quem prescreveu ontem (censo) 2,5.
@@ -1046,32 +1048,25 @@ L.divide = function (patients, docs, history, fixed) {
     if (best.age >= 2) { older.push({ p, ...best }); continue; }
     if (s >= 0 && s !== best.di) divOverPresc++;
     if (yDi >= 0 && yDi !== best.di) backPrev++;
-    // paciente RP com médico VS: só mantém se sobrar vaga depois dos pacientes VS
-    if (mixed && p.team === 'RP' && st[best.di].team === 'VS') { later.push([p, best]); continue; }
-    mark(p, best); put(p, best.di);
+    cand.push({ p, best });
   }
   if (divOverPresc) res.notes.push({ t: 'regra', s: `${divOverPresc} paciente(s) ficaram com o médico das divisões anteriores, embora outro médico tenha prescrito.` });
   if (backPrev) res.notes.push({ t: 'regra', s: `${backPrev} paciente(s) voltaram para o médico que o censo e as divisões dos dias anteriores apontam (a divisão de ontem tinha mudado).` });
   if (!(history || []).length) res.notes.push({ t: 'regra', s: 'ATENÇÃO: não encontrei divisões anteriores (nem neste aparelho, nem na planilha). A continuidade usou só o nome de quem prescreveu no censo. Para manter os pacientes de cada médico, cole o texto da divisão de ontem em "Colar divisão em texto" e divida de novo.' });
-  // total justo (diferença máxima de 1)
+  // total justo (diferença máxima de 1). Ninguém passa da cota, nem com os pacientes de ontem.
   const base = Math.floor(N / D); let extra = N % D;
   for (const d of st) d.target = base;
-  [...st].sort((a, b) => (a.team === 'VS' ? 0 : 1) - (b.team === 'VS' ? 0 : 1) || b.n - a.n).forEach(d => { if (extra > 0) { d.target++; extra--; } });
-  for (const d of st) if (d.n > d.target) {
-    let over = d.n - d.target; d.target = d.n;
-    res.notes.push({ t: 'regra', s: `${d.name} já acompanhava ${d.n} pacientes, acima da cota; manteve todos.` });
-    while (over > 0) { const o = st.filter(x => x !== d && x.target > x.n).sort((a, b) => b.target - a.target)[0]; if (!o) break; o.target--; over--; }
+  const nCand = i => cand.filter(c => c.best.di === i).length;
+  [...st].sort((a, b) => (a.team === 'VS' ? 0 : 1) - (b.team === 'VS' ? 0 : 1) || nCand(b.i) - nCand(a.i)).forEach(d => { if (extra > 0) { d.target++; extra--; } });
+  for (const d of st) if (d.n > d.target) d.target = d.n; // só vínculo fixo pode passar
+  // continuidade dentro da cota: quem tem mais evidência (censo + divisões) fica primeiro
+  for (const { p, best } of cand.sort((a, b) => b.best.w - a.best.w)) {
+    if (res.assign.has(p)) continue;
+    // paciente RP com médico VS: só mantém se sobrar vaga depois dos pacientes VS
+    if (mixed && p.team === 'RP' && st[best.di].team === 'VS') { later.push([p, best]); continue; }
+    if (st[best.di].n < st[best.di].target) { mark(p, best); put(p, best.di); } else overQ++;
   }
-  // médicos VS recebem a mais quando há mais pacientes VS do que a cota deles
-  if (mixed) {
-    let moved = 0;
-    while (vsSlack() < 0) {
-      const v = st.filter(d => d.team === 'VS').sort((a, b) => a.target - b.target)[0];
-      const r = st.filter(d => d.team === 'RP' && d.target > d.n).sort((a, b) => b.target - a.target)[0];
-      if (!v || !r) break; v.target++; r.target--; moved++;
-    }
-    if (moved) res.notes.push({ t: 'regra', s: `Há mais pacientes VS do que a cota dos médicos VS: eles ficaram com ${moved} paciente(s) a mais, porque médico RP não recebe VS.` });
-  }
+  if (overQ) res.notes.push({ t: 'regra', s: `${overQ} paciente(s) do mesmo médico de antes foram redistribuídos para todos ficarem com o mesmo número de pacientes.` });
   let released = 0;
   for (const [p, b] of later) {
     if (st[b.di].n < st[b.di].target && vsSlack() > 0) { mark(p, b); put(p, b.di); } else released++;
@@ -1133,7 +1128,7 @@ L.divide = function (patients, docs, history, fixed) {
     if (!ps.length) return 0;
     const cnt = {}; for (const p of ps) cnt[p.unit] = (cnt[p.unit] || 0) + 1;
     const top = Math.max(...Object.values(cnt)), floors = new Set(ps.map(fl)), pr = prefOf(st[i]);
-    const ban = ps.filter(p => bannedFor(p)(i)).length, wrong = ps.filter(p => p.team !== st[i].team).length;
+    const ban = ps.filter(p => bannedFor(p)(i)).length, wrong = ps.filter(p => p.team !== st[i].team).length + (mixed && st[i].team === 'RP' ? 250 * ps.filter(p => p.team === 'VS').length : 0);
     const brk = ps.filter(p => p.home != null && p.home !== i).length;
     const offPref = pr ? ps.filter(p => fl(p) !== pr && p.fixedDi == null).length : 0;
     const lv = lvOf(st[i]) ? ps.reduce((a, p) => a + cx(p), 0) : 0;
@@ -1161,10 +1156,12 @@ L.divide = function (patients, docs, history, fixed) {
   for (const p of patients) if (p.home != null && res.assign.get(p) !== p.home) { p.star = false; p.cont = null; }
   if (brokeN) res.notes.push({ t: 'regra', s: `Para igualar o número de clínicos, ${brokeN} paciente(s) mudaram do médico que já acompanhava.` });
   const cmTxt = st.map(d => `${(d.name.replace(/^(dr|dra|doutor|doutora)\.?\s+/i, '').split(' ')[0])} ${cmN[d.i]}`).join(' · ');
-  res.notes.push({ t: 'regra', s: `Clínicos (CM) por médico: ${cmTxt}.` + (Math.max(...cmN) - Math.min(...cmN) > 1 ? ' A diferença maior que 1 vem da regra RP/VS (paciente VS não vai para médico RP).' : '') });
+  res.notes.push({ t: 'regra', s: `Clínicos (CM) por médico: ${cmTxt}.` + (Math.max(...cmN) - Math.min(...cmN) > 1 ? ' A diferença maior que 1 vem da continuidade dos pacientes e da regra RP/VS.' : '') });
+  const vsRp = mixed ? patients.filter(p => p.team === 'VS' && st[res.assign.get(p)].team === 'RP').length : 0;
+  if (vsRp) res.notes.push({ t: 'regra', s: `${vsRp} paciente(s) VS ficaram com médico RP: os médicos VS já estavam com o mesmo número de pacientes dos outros.` });
   const cross = patients.filter(p => p.fixedDi == null && st[res.assign.get(p)].team !== p.team).length;
   if (cross && !mixed) res.notes.push({ t: 'regra', s: `Só há médicos de uma equipe hoje: ${cross} paciente(s) da outra equipe (RP/VS) ficaram com eles.` });
-  else if (cross) res.notes.push({ t: 'regra', s: `${cross} paciente(s) RP ficaram com médico VS (continuidade ou equilíbrio do número de pacientes). Médico RP não recebe paciente VS.` });
+  else if (cross - vsRp > 0) res.notes.push({ t: 'regra', s: `${cross - vsRp} paciente(s) RP ficaram com médico VS (continuidade ou equilíbrio do número de pacientes).` });
   res.targets = st.map(d => d.target);
   return res;
 };
