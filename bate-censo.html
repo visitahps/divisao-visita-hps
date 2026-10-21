@@ -1435,19 +1435,55 @@ function updProg() {
    Alta entre o mínimo (6h) e o máximo (12h). Fica guardada no bate censo do dia (id "dc-<atendimento>"), sem entrar na contagem de leitos. */
 S.dc = new Map(); S.dcY = new Map();
 const DCMOT = ['Cirurgião registrou alta para amanhã', 'Intercorrência ou complicação', 'Dor, náusea ou vômito', 'Aguarda exame ou avaliação', 'Cirurgia atrasou', 'Sem acompanhante / social', 'Outro'];
-const dcDT = v => { const s = String(v ?? '').trim(); let m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})[ T]*(\d{1,2}):\s?(\d{2})(?::(\d{2}))?/);
-  if (m) { const y = +m[3] < 100 ? 2000 + +m[3] : +m[3]; return new Date(y, +m[2] - 1, +m[1], +m[4], +m[5], +(m[6] || 0)); }
+const dcDT = v => {
+  if (v instanceof Date) return isNaN(v) ? null : v;
+  if (typeof v === 'number' && v > 20000 && v < 80000) { const d = new Date(Math.round((v - 25569) * 864e5)); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds()); }
+  const s = String(v ?? '').trim();
+  let m = s.match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})[ T,]*(\d{1,2})[:h]\s?(\d{2})(?::(\d{2}))?/);
+  if (m) { let dd = +m[1], mo = +m[2]; if (mo > 12 && dd <= 12) [dd, mo] = [mo, dd]; if (mo < 1 || mo > 12 || dd < 1 || dd > 31) return null; const y = +m[3] < 100 ? 2000 + +m[3] : +m[3]; return new Date(y, mo - 1, dd, +m[4], +m[5], +(m[6] || 0)); }
   m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/); return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) : null; };
+/* leitura tolerante: acha cada paciente pelo par "código do paciente + atendimento" (números longos) e pega as datas que vêm depois.
+   Serve para texto colado (com ou sem tabulação, uma célula por linha), linhas do Excel e texto lido do print. */
+L.dcRecords = function (txt) {
+  const DTs = String.raw`\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}[ T,]*\d{1,2}[:h]\s?\d{2}(?::\d{2})?`;
+  const flat = ' ' + String(txt || '').replace(/[—–|_\t\r\n]+/g, ' ').replace(/\s+/g, ' ') + ' ';
+  const starts = [...flat.matchAll(/(?:\b(INTERN\w*|PQA|POA|PCA|AMB\w*|DAY\s?CLINIC|DIA)\s+)?(\d{6,10})\s+(\d{8,11})\s+(?=[A-Za-zÀ-ú])/gi)];
+  const out = [];
+  starts.forEach((m, k) => {
+    const seg = flat.slice(m.index + m[0].length, k + 1 < starts.length ? starts[k + 1].index : flat.length);
+    const dts = [...seg.matchAll(new RegExp(DTs, 'g'))]; if (!dts.length) return;
+    const ent = dcDT(dts[0][0]); if (!ent) return;
+    const nome = seg.slice(0, dts[0].index).replace(/[.…]+\s*$/, '').replace(/[^A-Za-zÀ-ú .']/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+    if (nome.length < 4) return;
+    const mid = seg.slice(dts[0].index + dts[0][0].length, dts[1] ? dts[1].index : seg.length);
+    const proc = mid.replace(/^\s*\S{1,3}\s+(?=\d{4,})/, ' ').replace(/^\s*\d{4,}\s*/, '').replace(/[.…]+\s*$/, '').replace(/\s+/g, ' ').trim();
+    let mn = dts[1] && dcDT(dts[1][0]), mx = dts[2] && dcDT(dts[2][0]), conf = false;
+    if (mn && !mx) { const h = (mn - ent) / 36e5; if (h > 11.5 && h < 12.5) { mx = mn; mn = null; } }
+    const hx = mx ? (mx - ent) / 36e5 : NaN;
+    if (!(hx > 11.5 && hx < 12.5)) { conf = true; mx = new Date(+ent + 12 * 36e5); }
+    if (!mn || !((mn - ent) / 36e5 > 5.5 && (mn - ent) / 36e5 < 6.5)) mn = new Date(+ent + 6 * 36e5);
+    const tipo = String(m[1] || '').toUpperCase();
+    out.push({ tipo: /^P/.test(tipo) ? 'PQA' : /^INTERN/.test(tipo) ? 'INTERN' : tipo, cdPac: m[2], atend: m[3], nome, proc: proc.slice(0, 80), lim: '', ent: ent.toISOString(), min: mn.toISOString(), max: mx.toISOString(), unidade: '', conferir: conf });
+  });
+  return out;
+};
+const dcCell = c => { if (c instanceof Date) c = c.toLocaleString('pt-BR'); else if (typeof c === 'number' && c > 20000 && c < 80000 && c % 1) { const d = dcDT(c); c = d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR'); } return String(c ?? ''); };
+/* tenta as leituras na ordem: tabela com cabeçalho → linha a linha → registros soltos */
+L.dcAny = function (txt, rows) {
+  let a = []; try { a = L.parseDC(txt, rows); } catch (e) {}
+  if (!a.length && txt) { try { a = L.parseDCocr(txt); } catch (e) {} }
+  if (!a.length) a = L.dcRecords(rows ? rows.map(r => (r || []).map(dcCell).join(' ')).join('\n') : txt);
+  const seen = new Set(); return a.filter(d => d.atend && !seen.has(d.atend) && seen.add(d.atend));
+};
 const DTR = String.raw`\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?`;
 L.parseDC = function (txt, rows) {
   const out = [], mk = (o) => { const ent = dcDT(o.ent); if (!o.atend || !o.nome || !ent) return; const mn = dcDT(o.min) || new Date(+ent + 6 * 36e5), mx = dcDT(o.max) || new Date(+ent + 12 * 36e5);
-    out.push({ tipo: String(o.tipo || '').trim(), cdPac: String(o.cdPac || '').replace(/\D/g, ''), atend: String(o.atend).replace(/\D/g, ''), nome: String(o.nome).replace(/\s+/g, ' ').trim().toUpperCase(), proc: String(o.proc || '').replace(/\s+/g, ' ').trim(), lim: String(o.lim || '').trim(), ent: ent.toISOString(), min: mn.toISOString(), max: mx.toISOString(), unidade: String(o.unid || '').trim() }); };
+    out.push({ tipo: (t => /^P[OQ0]A$/.test(t) ? 'PQA' : /^INTERN/.test(t) ? 'INTERN' : t)(String(o.tipo || '').trim().toUpperCase()), cdPac: String(o.cdPac || '').replace(/\D/g, ''), atend: String(o.atend).replace(/\D/g, ''), nome: String(o.nome).replace(/^[^A-Za-zÀ-ú]+/, '').replace(/[\s.…—–-]+$/, '').replace(/\s+/g, ' ').trim().toUpperCase(), proc: String(o.proc || '').replace(/[\s.…—–-]+$/, '').replace(/\s+/g, ' ').trim(), lim: String(o.lim || '').trim(), ent: ent.toISOString(), min: mn.toISOString(), max: mx.toISOString(), unidade: String(o.unid || '').trim() }); };
   const grid = rows || String(txt || '').split(/\r?\n/).map(l => l.includes('\t') ? l.split('\t') : null);
-  const hi = grid.findIndex(r => r && r.some(c => /NM\s*PACIENTE|^PACIENTE$/i.test(String(c ?? '').trim())) && r.some(c => /ATEND/i.test(String(c ?? ''))));
+  const hi = grid.findIndex(r => r && r.some(c => /PACIENTE/i.test(String(c ?? '').trim()) && !/^CD/i.test(String(c ?? '').trim())) && r.some(c => /ATEND/i.test(String(c ?? ''))));
   if (hi >= 0) {
     const h = grid[hi].map(c => L.norm(c)), ix = re => h.findIndex(c => re.test(c));
-    const I = { tipo: ix(/^TIPO/), cdPac: ix(/^CD PACIENTE/), atend: ix(/^CD ATEND|^ATEND/), nome: ix(/PACIENTE$/), ent: ix(/^DT ATEND|^DATA/), lim: ix(/^LIMITE/), proc: ix(/^NM PROCED|^PROCED/), min: ix(/^LIM MIN/), max: ix(/^LIM MAX/), unid: ix(/UNIDADE/) };
-    if (I.nome === I.cdPac) I.nome = h.findIndex(c => /^NM PACIENTE/.test(c));
+    const I = { tipo: ix(/^TIPO/), cdPac: ix(/^(CD|COD\w*) PACIENTE/), atend: ix(/^(CD|COD\w*|N|NR|NUM\w*) ?ATEND|^ATEND/), nome: h.findIndex(c => /PACIENTE|^NOME/.test(c) && !/^(CD|COD)/.test(c)), ent: ix(/^(DT|DATA)( DE)? ?(ATEND|ENTRADA|INTERN|ADMISS)|^DT ATEND|^ENTRADA/), lim: ix(/^LIMITE/), proc: h.findIndex(c => /PROCED/.test(c) && !/^(CD|COD)/.test(c)), min: ix(/^LIM\w* MIN|MINIMO/), max: ix(/^LIM\w* MAX|MAXIMO/), unid: ix(/UNIDADE/) };
     for (const r of grid.slice(hi + 1)) { if (!r) continue; const g = k => I[k] >= 0 ? r[I[k]] : ''; mk({ tipo: g('tipo'), cdPac: g('cdPac'), atend: g('atend'), nome: g('nome'), ent: g('ent'), lim: g('lim'), proc: g('proc'), min: g('min'), max: g('max'), unid: g('unid') }); }
     if (out.length) return out;
   }
@@ -1579,8 +1615,8 @@ L.parseDCocr = function (txt) {
 function dcRevHtml() {
   if (S.dcBusy) return `<p class="status">${esc(S.dcBusy)}</p>`;
   const r = S.dcRev; if (!r) return '';
-  if (!r.list.length) return `<p class="status err">Não consegui ler pacientes neste print. Tente um print mais nítido, só da tabela (sem cortar as colunas de data), ou cole o texto.</p><details><summary class="hint">Ver o que foi lido</summary><textarea class="dcpaste" readonly>${esc(r.text)}</textarea></details>`;
-  return `<div class="dcrev"><b>Li ${r.list.length} paciente(s) no print. Confira nome e horários antes de adicionar:</b>
+  if (!r.list.length) return `<p class="status err">Não encontrei pacientes. Preciso de cada linha com o código do paciente, o atendimento, o nome e a data/hora de entrada. Toque em "Ver o que foi lido" e me mande um print disso para eu ajustar.</p><details open><summary class="hint">Ver o que foi lido</summary><textarea class="dcpaste" readonly>${esc(r.text)}</textarea></details>`;
+  return `<div class="dcrev"><b>Encontrei ${r.list.length} paciente(s). Confira nome e horários antes de adicionar:</b>
     ${r.list.map((d, i) => `<label class="dcr ${d.conferir ? 'warn' : ''}"><input type="checkbox" data-rev="${i}" ${d.sel !== false ? 'checked' : ''}> <span><b>${esc(L.title(d.nome))}</b> · ${esc(d.proc || '')} · entrada ${esc(dcWhen(d.ent))} · limite ${esc(dcWhen(d.max))}${d.conferir ? ' · <b>confira: a leitura deste horário ou do atendimento ficou incerta</b>' : ''}</span></label>`).join('')}
     <div class="row" style="margin-top:6px"><button class="btn primary" id="dcRevAdd">Adicionar selecionados</button><button class="btn" id="dcRevCancel">Cancelar</button></div>
     <details><summary class="hint">Ver o texto lido do print</summary><textarea class="dcpaste" readonly>${esc(r.text)}</textarea></details></div>`;
@@ -1588,7 +1624,7 @@ function dcRevHtml() {
 $('dcBox').addEventListener('change', async e => {
   if (e.target.id === 'dcImg') { const f = e.target.files[0]; e.target.value = ''; if (!f) return;
     S.dcRev = null; S.dcBusy = 'Lendo o print… na primeira vez pode levar até 1 minuto (o aparelho baixa o leitor de imagem).'; renderDC();
-    try { const text = await dcOcr(f); S.dcRev = { text, list: L.parseDCocr(text) }; }
+    try { const text = await dcOcr(f); S.dcRev = { text, list: L.dcAny(text) }; }
     catch (err) { S.dcRev = { text: String(err.message || err), list: [] }; }
     S.dcBusy = ''; renderDC(); return; }
   if (e.target.dataset.rev != null && S.dcRev) S.dcRev.list[+e.target.dataset.rev].sel = e.target.checked;
@@ -1602,7 +1638,7 @@ $('dcBox').addEventListener('click', e => {
 setInterval(() => { if (!document.hidden) { if (!S.dcRev && !S.dcBusy) renderDC(); dcNotify(); } }, 60000);
 $('dcBox').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.id === 'dcAddPaste') { dcAdd(L.parseDC($('dcPaste').value)); $('dcPaste').value = ''; return; }
+  if (b.id === 'dcAddPaste') { const text = $('dcPaste').value; S.dcRev = { text, list: L.dcAny(text) }; renderDC(); return; }
   if (b.id === 'dcAddOne') { const nome = $('dcNome').value.trim(), ent = $('dcEnt').value; if (!nome || !ent) { setStatus('dcStatus', 'Preencha o nome e a hora de entrada.', true); return; }
     const t = new Date(ent); dcAdd([{ tipo: '', cdPac: '', atend: 'm' + Date.now().toString(36), nome: nome.toUpperCase(), proc: $('dcProc').value.trim(), lim: '', ent: t.toISOString(), min: new Date(+t + 6 * 36e5).toISOString(), max: new Date(+t + 12 * 36e5).toISOString(), unidade: '', leito: $('dcLeito').value.trim().toUpperCase() }]); return; }
   if (b.id === 'dcWa') { const t = dcWaText(); try { await navigator.clipboard.writeText(t); setStatus('dcStatus', 'Alerta copiado. Cole no grupo do plantão.'); } catch (err) { prompt('Copie o alerta:', t); } return; }
@@ -1616,8 +1652,9 @@ $('dcBox').addEventListener('click', async e => {
 $('dcBox').addEventListener('change', async e => {
   if (e.target.id === 'dcFile') { const f = e.target.files[0]; if (!f) return;
     try { let rows; if (/\.csv$/i.test(f.name)) rows = (await f.text()).split(/\r?\n/).map(l => l.split(/;|,|\t/));
-      else { const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: false }); }
-      dcAdd(L.parseDC('', rows)); } catch (err) { setStatus('dcStatus', 'Não consegui ler ' + f.name, true); }
+      else { const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' }); rows = [];
+        for (const n of wb.SheetNames) { const r = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '', raw: true }); if (L.dcAny('', r).length) { rows = r; break; } if (!rows.length) rows = r; } }
+      S.dcRev = { text: rows.slice(0, 40).map(r => (r || []).map(dcCell).join(' | ')).join('\n'), list: L.dcAny('', rows) }; renderDC(); } catch (err) { setStatus('dcStatus', 'Não consegui ler ' + f.name, true); }
     e.target.value = ''; return; }
   const it = e.target.closest('[data-dc]'); if (!it || !e.target.dataset.dcf) return;
   dcWrite(it.dataset.key, it.dataset.dc, { [e.target.dataset.dcf]: e.target.value.trim() });
