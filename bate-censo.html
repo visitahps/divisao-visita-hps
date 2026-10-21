@@ -268,6 +268,8 @@ details.kb dd{margin:0;overflow-wrap:anywhere;white-space:pre-line}
 .dctag.soon{background:var(--pm-soft);color:var(--pm)}.dctag.over{background:var(--long-soft);color:var(--long)}.dctag.ok{background:var(--ok-soft);color:var(--ok)}
 .dcbox details{margin-top:8px}.dcbox details summary{cursor:pointer;font-weight:700;font-size:13.5px}
 .dcbox textarea.dcpaste{width:100%;min-height:90px;font:inherit;font-size:12.5px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.dcrev{margin-top:6px;display:grid;gap:4px;font-size:13px}.dcr{display:flex;gap:6px;align-items:flex-start;padding:4px 6px;border-radius:7px;background:var(--soft)}
+.dcr.warn{background:var(--pm-soft)}.dcr input{margin-top:3px}
 .dcadd{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px;margin-top:6px}
 .dcadd input{padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit;font-size:13px;min-width:0}
 .naoatbox{background:var(--long-soft);border:1px solid var(--long);border-radius:12px;padding:12px 14px;margin-bottom:12px}
@@ -1433,7 +1435,7 @@ function updProg() {
    Alta entre o mínimo (6h) e o máximo (12h). Fica guardada no bate censo do dia (id "dc-<atendimento>"), sem entrar na contagem de leitos. */
 S.dc = new Map(); S.dcY = new Map();
 const DCMOT = ['Cirurgião registrou alta para amanhã', 'Intercorrência ou complicação', 'Dor, náusea ou vômito', 'Aguarda exame ou avaliação', 'Cirurgia atrasou', 'Sem acompanhante / social', 'Outro'];
-const dcDT = v => { const s = String(v ?? '').trim(); let m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+const dcDT = v => { const s = String(v ?? '').trim(); let m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})[ T]*(\d{1,2}):\s?(\d{2})(?::(\d{2}))?/);
   if (m) { const y = +m[3] < 100 ? 2000 + +m[3] : +m[3]; return new Date(y, +m[2] - 1, +m[1], +m[4], +m[5], +(m[6] || 0)); }
   m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/); return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) : null; };
 const DTR = String.raw`\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?`;
@@ -1503,8 +1505,10 @@ function renderDC() {
         <textarea data-dcf="obs" rows="1" placeholder="Detalhe (ex.: cirurgião prescreveu alta para amanhã às 8h; dor controlada só à noite)" ${ro ? 'disabled' : ''}>${esc(d.obs || '')}</textarea>` : ''}
         ${d.por ? `<span class="hint" style="margin:0">atualizado por ${esc(d.por)} às ${esc(dcWhen(d.at))}</span>` : ''}
       </div>`; }).join('')}</div>
-    ${ro ? '' : `<details><summary>Adicionar pacientes do relatório de day clinic</summary>
-      <p class="hint">Copie a tabela do relatório do sistema (selecione as linhas e copie) e cole aqui, ou envie o Excel/CSV exportado. Também dá para adicionar um paciente à mão.</p>
+    ${ro ? '' : `<details ${S.dcRev || S.dcBusy ? 'open' : ''}><summary>Adicionar pacientes do relatório de day clinic</summary>
+      <p class="hint">Mais fácil: envie o <b>print</b> da tela do relatório. Também dá para colar a tabela copiada do sistema, enviar o Excel/CSV ou adicionar um paciente à mão.</p>
+      <div class="row" style="margin:6px 0"><label class="btn primary" style="cursor:pointer">📷 Enviar print do relatório<input type="file" id="dcImg" accept="image/*" hidden></label></div>
+      ${dcRevHtml()}
       <textarea class="dcpaste" id="dcPaste" placeholder="Cole aqui as linhas do relatório (INTERN 28374039 193761140 ADMIR ... 20/10/26 12:19:44 ...)"></textarea>
       <div class="row" style="margin-top:6px"><button class="btn primary" id="dcAddPaste">Adicionar à lista</button><label class="btn" style="cursor:pointer">Enviar Excel/CSV<input type="file" id="dcFile" accept=".xlsx,.xls,.csv" hidden></label></div>
       <div class="dcadd"><input id="dcNome" placeholder="Nome do paciente"><input id="dcLeito" placeholder="Leito"><input id="dcProc" placeholder="Procedimento"><input id="dcEnt" type="datetime-local" aria-label="Entrada"><button class="btn" id="dcAddOne">Adicionar à mão</button></div>
@@ -1538,7 +1542,64 @@ function dcNotify() {
       try { new Notification(`Day clinic ${H.curto}: ${L.title(d.nome)}`, { body: th ? `Faltam ${dcDur(left)} para as 12h (alta até ${dcWhen(d.max)}).` : `Passou das 12h (limite ${dcWhen(d.max)}). Registre a alta ou o motivo.`, tag: k }); } catch (e) {}
       break; } }
 }
-setInterval(() => { if (!document.hidden) { renderDC(); dcNotify(); } }, 60000);
+
+/* ===== print do relatório: leitura do texto da imagem (OCR) no próprio aparelho ===== */
+const OCR_JS = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+function loadScript(src) { return new Promise((res, rej) => { if ([...document.scripts].some(x => x.src === src)) return res(); const e = document.createElement('script'); e.src = src; e.onload = res; e.onerror = () => rej(new Error('não carregou o leitor de imagem')); document.head.appendChild(e); }); }
+async function dcOcr(file) {
+  await loadScript(OCR_JS);
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
+  const k = Math.min(3, Math.max(1, 2600 / img.naturalWidth, 2)), cv = document.createElement('canvas');
+  cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k);
+  const cx = cv.getContext('2d'); cx.imageSmoothingQuality = 'high'; cx.drawImage(img, 0, 0, cv.width, cv.height);
+  const px = cx.getImageData(0, 0, cv.width, cv.height), d = px.data;
+  for (let i = 0; i < d.length; i += 4) { const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; d[i] = d[i + 1] = d[i + 2] = g; }
+  cx.putImageData(px, 0, 0);
+  const w = await Tesseract.createWorker('por', 1, { workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js', corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1', langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/por@1.0.0/4.0.0_best_int' });
+  try { await w.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' }); const r = await w.recognize(cv); return r.data.text || ''; }
+  finally { w.terminate(); }
+}
+/* linhas lidas do print: TIPO, CD PACIENTE, CD ATEND, NOME, DT ATEND, (LIMITE), CD PROCED, PROCEDIMENTO, LIM MIN, LIM MAX */
+L.parseDCocr = function (txt) {
+  const DT = String.raw`\d{1,2}\/\d{1,2}\/\d{2,4}\s*\d{1,2}:\s?\d{2}(?::\d{2})?`;
+  const re = new RegExp(String.raw`\b(INTERN\w*|PQA|POA|PCA|PQ4|AMB\w*|DAY\w*)\s+(\S+)\s+(\S+)\s+(.+?)\s+(${DT})\s+(?:(\S{1,3})\s+)?(\S{4,})\s+(.+?)\s+(${DT})[.,;]?\s+(${DT})`, 'i');
+  const out = [];
+  for (const raw of String(txt || '').split(/\r?\n/)) {
+    const l = raw.replace(/[—–|_]/g, ' ').replace(/\s+/g, ' '); const m = l.match(re); if (!m) continue;
+    const ent = dcDT(m[5]); if (!ent) continue;
+    let mn = dcDT(m[9]), mx = dcDT(m[10]), ok = true;
+    const h = mx ? (mx - ent) / 36e5 : NaN;
+    if (!(h > 11.5 && h < 12.5)) { ok = false; mx = new Date(+ent + 12 * 36e5); mn = new Date(+ent + 6 * 36e5); }
+    const atend = m[3].replace(/\D/g, '');
+    out.push({ tipo: /^P/i.test(m[1]) ? 'PQA' : m[1].toUpperCase().replace(/^INTERN\w*/, 'INTERN'), cdPac: m[2].replace(/\D/g, ''), atend: atend.length >= 8 ? atend : 'o' + (+ent).toString(36) + L.norm(m[4]).slice(0, 6).replace(/\W/g, ''),
+      nome: m[4].replace(/^[^A-Za-zÀ-ú]+/, '').replace(/[.…]+$/, '').trim().toUpperCase(), proc: m[8].replace(/[.…]+$/, '').trim(), lim: m[6] || '', ent: ent.toISOString(), min: (mn || new Date(+ent + 6 * 36e5)).toISOString(), max: mx.toISOString(), unidade: '', conferir: !ok || atend.length < 8 });
+  }
+  return out;
+};
+function dcRevHtml() {
+  if (S.dcBusy) return `<p class="status">${esc(S.dcBusy)}</p>`;
+  const r = S.dcRev; if (!r) return '';
+  if (!r.list.length) return `<p class="status err">Não consegui ler pacientes neste print. Tente um print mais nítido, só da tabela (sem cortar as colunas de data), ou cole o texto.</p><details><summary class="hint">Ver o que foi lido</summary><textarea class="dcpaste" readonly>${esc(r.text)}</textarea></details>`;
+  return `<div class="dcrev"><b>Li ${r.list.length} paciente(s) no print. Confira nome e horários antes de adicionar:</b>
+    ${r.list.map((d, i) => `<label class="dcr ${d.conferir ? 'warn' : ''}"><input type="checkbox" data-rev="${i}" ${d.sel !== false ? 'checked' : ''}> <span><b>${esc(L.title(d.nome))}</b> · ${esc(d.proc || '')} · entrada ${esc(dcWhen(d.ent))} · limite ${esc(dcWhen(d.max))}${d.conferir ? ' · <b>confira: a leitura deste horário ou do atendimento ficou incerta</b>' : ''}</span></label>`).join('')}
+    <div class="row" style="margin-top:6px"><button class="btn primary" id="dcRevAdd">Adicionar selecionados</button><button class="btn" id="dcRevCancel">Cancelar</button></div>
+    <details><summary class="hint">Ver o texto lido do print</summary><textarea class="dcpaste" readonly>${esc(r.text)}</textarea></details></div>`;
+}
+$('dcBox').addEventListener('change', async e => {
+  if (e.target.id === 'dcImg') { const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    S.dcRev = null; S.dcBusy = 'Lendo o print… na primeira vez pode levar até 1 minuto (o aparelho baixa o leitor de imagem).'; renderDC();
+    try { const text = await dcOcr(f); S.dcRev = { text, list: L.parseDCocr(text) }; }
+    catch (err) { S.dcRev = { text: String(err.message || err), list: [] }; }
+    S.dcBusy = ''; renderDC(); return; }
+  if (e.target.dataset.rev != null && S.dcRev) S.dcRev.list[+e.target.dataset.rev].sel = e.target.checked;
+});
+$('dcBox').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.id === 'dcRevAdd' && S.dcRev) { const sel = S.dcRev.list.filter(d => d.sel !== false).map(({ sel, conferir, ...d }) => d); S.dcRev = null; dcAdd(sel); }
+  if (b.id === 'dcRevCancel') { S.dcRev = null; renderDC(); }
+});
+
+setInterval(() => { if (!document.hidden) { if (!S.dcRev && !S.dcBusy) renderDC(); dcNotify(); } }, 60000);
 $('dcBox').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.id === 'dcAddPaste') { dcAdd(L.parseDC($('dcPaste').value)); $('dcPaste').value = ''; return; }
