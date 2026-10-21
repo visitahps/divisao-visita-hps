@@ -257,6 +257,9 @@ details.tv summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--mut
 .ulinks .u{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--paper);display:flex;justify-content:space-between;align-items:center;gap:8px}
 .ulinks .u b{font-size:14px}.ulinks .u span{display:flex;gap:6px}
 .ulinks a{font-size:12.5px;font-weight:700;color:var(--brand);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:3px 9px;background:var(--card)}
+.dct{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}.dct span{border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:13px}.dct b{font-size:18px;display:block}
+.dct .bad b{color:var(--long)}.dct .good b{color:var(--ok)}
+.dch{font-size:14px;margin:10px 0 4px}
 .gb{display:grid;grid-template-columns:minmax(120px,190px) minmax(0,1fr) 44px;gap:8px;align-items:center;font-size:14px;margin:6px 0}
 .gb .bar{height:14px;background:var(--soft);border-radius:4px;overflow:hidden}.gb .bar i{display:block;height:100%;background:var(--bar);border-radius:0 4px 4px 0}
 .gb b{text-align:right}
@@ -771,6 +774,14 @@ dSAmiECD0Adivpo5aHfvbi1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span cl
     <div id="garg"></div>
   </section>
 
+  <section class="panel" id="dcPanel">
+    <h2>Day clinic · alta em até 12h <small id="dcSub"></small></h2>
+    <p class="lead">Pacientes do relatório de day clinic cadastrados no bate censo. Use os motivos e os cirurgiões para conversar com a coordenação de cada especialidade cirúrgica.</p>
+    <div id="dcTiles" class="dct"></div>
+    <div class="grid2"><div><h3 class="dch">Por que passou das 12h</h3><div id="dcMot"></div></div><div><h3 class="dch">Por cirurgião</h3><div class="tbl"><table id="dcCir"></table></div></div></div>
+    <h3 class="dch">Abertos agora</h3><div class="lst" id="dcOpen"></div>
+  </section>
+
   <section class="panel">
     <h2>Quem saiu <small id="outSub"></small></h2>
     <p class="lead">Pacientes que estavam no censo anterior e não estão no seguinte (alta, óbito ou transferência).</p>
@@ -1115,7 +1126,7 @@ function render() {
   renderUp();
   if (!days.length) { $('tiles').innerHTML = '<div class="panel empty">Carregue o primeiro censo acima. Os indicadores aparecem a partir do segundo dia (as saídas saem da comparação entre dois censos).</div>'; ['cmp', 'chart', 'dueList', 'longList', 'outList', 'dayTbl'].forEach(id => $(id).innerHTML = ''); return; }
   const hs = activeH(), st = hs.map(stats), T = S.hosp === 'all' ? sumStats(st) : st[0];
-  renderTiles(T); renderCmp(st, T); renderChart(hs); renderNaoAt(hs); renderDue(hs); renderLong(hs); renderGarg(hs); renderOut(hs);
+  renderTiles(T); renderCmp(st, T); renderChart(hs); renderNaoAt(hs); renderDC(hs); renderDue(hs); renderLong(hs); renderGarg(hs); renderOut(hs);
 }
 function tile(k, v, s, cls, meta) { return `<div class="tile ${cls || ''}"><span class="k">${k}</span><span class="v">${v}</span><span class="s">${s}</span>${meta || ''}</div>`; }
 function renderTiles(T) {
@@ -1262,6 +1273,32 @@ function renderNaoAt(hs) {
     return `<div class="na">${hdr} · <b>${r.tot - r.n} de ${r.tot} atualizados</b> · faltam ${r.n}<ul>${r.docs.map(([d, bs, cel]) => `<li><b>${esc(d)}</b> (${bs.length}): ${bs.map(esc).join(', ')}${d === 'Sem médico na divisão' ? '' : ` <a class="wa" target="_blank" rel="noopener" href="${esc(cobrarHref(r.h, d, bs, cel))}">${cel ? 'Cobrar no WhatsApp' : 'Enviar no WhatsApp'}</a>`}</li>`).join('')}</ul></div>`;
   }).join('');
 }
+/* ======================= Day clinic ======================= */
+function dcEntries(hs) {
+  const p = period(), out = [];
+  for (const h of hs) { const seen = new Set();
+    for (const [day, ids] of Object.entries(S.bc[h] || {})) { if (day < p.from || day > p.to) continue;
+      for (const [id, b] of Object.entries(ids)) { const d = b.dc; if (!id.startsWith('dc-') || !d || !d.atend || d.removido || seen.has(id)) continue; seen.add(id); out.push({ h, day, id, d }); } } }
+  return out;
+}
+const dcK = d => { const mx = +new Date(d.max); if (d.altaEm) return +new Date(d.altaEm) <= mx ? 'ok' : 'late'; return Date.now() > mx ? 'over' : 'open'; };
+const hmDC = iso => { const d = new Date(iso); return d.toLocaleDateString('pt-BR').slice(0, 5) + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); };
+function renderDC(hs) {
+  const es = dcEntries(hs.filter(h => HOSPS[h].bc));
+  $('dcPanel').hidden = !es.length; if (!es.length) return;
+  const c = k => es.filter(e => dcK(e.d) === k).length, ok = c('ok'), late = c('late'), over = c('over'), open = c('open'), fin = ok + late + over;
+  $('dcSub').textContent = `· ${period().label}`;
+  $('dcTiles').innerHTML = `<span><b>${es.length}</b>pacientes</span><span class="good"><b>${fin ? Math.round(100 * ok / fin) : 0}%</b>alta em até 12h</span><span class="good"><b>${ok}</b>no prazo</span><span class="bad"><b>${late + over}</b>passaram das 12h${over ? ` (${over} ainda sem alta)` : ''}</span><span><b>${open}</b>em andamento</span>`;
+  const bad = es.filter(e => ['late', 'over'].includes(dcK(e.d))), mc = {};
+  bad.forEach(e => (e.d.mot && e.d.mot.length ? e.d.mot : ['Sem justificativa']).forEach(m => mc[m] = (mc[m] || 0) + 1));
+  const mr = Object.entries(mc).sort((a, b) => b[1] - a[1]), mx = mr.length ? mr[0][1] : 1;
+  $('dcMot').innerHTML = mr.length ? mr.map(([m, v]) => `<div class="gb"><span>${esc(m)}</span><span class="bar"><i style="width:${Math.round(100 * v / mx)}%"></i></span><b>${v}</b></div>`).join('') : '<p class="empty">Nenhum paciente passou das 12h no período.</p>';
+  const cr = {}; es.forEach(e => { const k = (e.d.cir || '').trim() || 'Não informado'; const o = cr[k] = cr[k] || { n: 0, fora: 0, amanha: 0, h: new Set() }; o.n++; o.h.add(HOSPS[e.h].curto); if (['late', 'over'].includes(dcK(e.d))) o.fora++; if (e.d.amanha || (e.d.mot || []).some(m => /amanh/i.test(m))) o.amanha++; });
+  const rows = Object.entries(cr).sort((a, b) => b[1].fora - a[1].fora || b[1].n - a[1].n);
+  $('dcCir').innerHTML = `<thead><tr><th>Cirurgião</th>${S.hosp === 'all' ? '<th>Hospital</th>' : ''}<th>Day clinic</th><th>Passaram 12h</th><th>Alta para amanhã registrada</th></tr></thead><tbody>${rows.map(([k, o]) => `<tr><td>${esc(k)}</td>${S.hosp === 'all' ? `<td>${esc([...o.h].join(', '))}</td>` : ''}<td>${o.n}</td><td>${o.fora}</td><td>${o.amanha}</td></tr>`).join('')}</tbody>`;
+  const op = es.filter(e => ['open', 'over'].includes(dcK(e.d))).sort((a, b) => +new Date(a.d.max) - +new Date(b.d.max));
+  $('dcOpen').innerHTML = op.length ? op.map(e => { const d = e.d, k = dcK(d); return `<div class="it ${k === 'over' ? 'long' : 'due'}"><div><b>${esc(d.nome)}</b> <span class="m">${S.hosp === 'all' ? esc(HOSPS[e.h].curto) + ' · ' : ''}${esc(d.proc || '')}</span></div><div class="bcl ${k === 'over' ? 'miss' : ''}">${k === 'over' ? 'Passou das 12h' : 'Alta até'} ${hmDC(d.max)}${d.cir ? ' · cirurgião: ' + esc(d.cir) : ''}${(d.mot || []).length ? ' · ' + esc(d.mot.join(', ')) : ''}${d.obs ? ' · ' + esc(d.obs) : ''}</div></div>`; }).join('') : '<p class="empty">Nenhum day clinic em aberto.</p>';
+}
 function renderGarg(hs) {
   const cnt = {}, cntL = {}; let n = 0, nL = 0;
   for (const h of hs) {
@@ -1300,6 +1337,7 @@ function resumo() {
     const H = HOSPS[s.h];
     out.push('', `*${H.curto.toUpperCase()}*`, `Censo de ${D.short(s.hd)} · Internados: ${s.total ?? '—'} · Saídas desde o censo anterior${s.saiOntemDay ? ` (${D.short(s.saiOntemDay)})` : ''}: ${s.saiOntem ?? '—'} · Saídas/dia: ${fmt(s.saiDia)}`, `TMP: ${fmt(s.tmp)} dias ${s.tmp == null ? '' : s.tmp <= META_DIAS ? '✅' : '⚠️'} · Giro: ${fmt(s.giro)} · Acima de ${META_DIAS} dias: ${s.long ?? '—'}`);
     if (H.bc) out.push(`Previstas para hoje: ${s.dueIn.length}${s.dueIn.length ? ` (${s.dueLeft} saíram, ${s.dueSemJust} sem justificativa)` : ''}${s.pc && s.pc.tot ? ` · Previsões cumpridas: ${pct(s.pc.ok, s.pc.tot)}` : ''}`);
+    const dce = dcEntries([s.h]); if (dce.length) { const k = x => dcK(x.d), ok = dce.filter(x => k(x) === 'ok').length, fin = dce.filter(x => k(x) !== 'open').length; out.push(`Day clinic: ${ok} de ${fin} com alta em até 12h${dce.some(x => k(x) === 'over') ? ` · ${dce.filter(x => k(x) === 'over').length} passaram das 12h sem alta` : ''}`); }
     const na = naoAt(s.h);
     if (na) out.push(!na.aberto ? `⚠ Bate censo de ${D.short(na.hd)} não foi aberto` : na.n ? `⚠ Leitos não atualizados no bate censo: ${na.n} de ${na.tot} (${na.docs.map(([d, bs]) => `${d.split(' ')[0]} ${bs.length}`).join(', ')})` : `Bate censo: todos os ${na.tot} leitos atualizados ✅`);
     const lg = (s.cur ? s.cur.pats.filter(q => isLong(s.h, q)) : []).sort((a, b) => (b.dias ?? 0) - (a.dias ?? 0)).slice(0, 5);

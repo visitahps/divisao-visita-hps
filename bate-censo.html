@@ -251,6 +251,25 @@ details.kb dd{margin:0;overflow-wrap:anywhere;white-space:pre-line}
 .flag{font-size:12.5px;background:var(--long-soft);color:var(--long);border-radius:6px;padding:4px 8px;overflow-wrap:anywhere}
 .flag b{font-weight:800}
 .pt.naoat{box-shadow:inset 0 0 0 2px var(--long-soft)}
+.dcbox{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--h24);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.dcbox h2{margin:0 0 4px;font-size:16px}.dcbox h2 small{font-weight:600;color:var(--muted);font-size:12.5px}
+.dcbox.alert{border-left-color:var(--long)}
+.dc-list{display:grid;gap:8px;margin-top:8px}
+.dc-it{border:1px solid var(--line);border-left:5px solid var(--line);border-radius:10px;padding:8px 10px;display:grid;gap:5px;min-width:0}
+.dc-it.wait{border-left-color:var(--muted)}.dc-it.win{border-left-color:var(--h24)}.dc-it.soon{border-left-color:var(--pm);background:var(--pm-soft)}
+.dc-it.over{border-left-color:var(--long);background:var(--long-soft)}.dc-it.ok{border-left-color:var(--ok)}.dc-it.late{border-left-color:var(--long)}
+.dc-h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}.dc-h b{font-size:14.5px}.dc-h .m{font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
+.dc-st{font-size:13px;font-weight:700}.dc-it.soon .dc-st{color:var(--pm)}.dc-it.over .dc-st,.dc-it.late .dc-st{color:var(--long)}.dc-it.ok .dc-st{color:var(--ok)}
+.dc-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.dc-row input[type=text]{flex:1 1 160px;min-width:0;padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit;font-size:13px}
+.dc-it textarea{width:100%;min-height:34px;padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit;font-size:13px}
+.dcbox button.link{border:0;background:none;color:var(--muted);text-decoration:underline;padding:0;font-size:12px;cursor:pointer}
+.dctag{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:1px 8px;background:var(--h24-soft);color:var(--h24)}
+.dctag.soon{background:var(--pm-soft);color:var(--pm)}.dctag.over{background:var(--long-soft);color:var(--long)}.dctag.ok{background:var(--ok-soft);color:var(--ok)}
+.dcbox details{margin-top:8px}.dcbox details summary{cursor:pointer;font-weight:700;font-size:13.5px}
+.dcbox textarea.dcpaste{width:100%;min-height:90px;font:inherit;font-size:12.5px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.dcadd{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px;margin-top:6px}
+.dcadd input{padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit;font-size:13px;min-width:0}
 .naoatbox{background:var(--long-soft);border:1px solid var(--long);border-radius:12px;padding:12px 14px;margin-bottom:12px}
 .naoatbox .wa{display:inline-block;margin-left:4px;font-weight:700;font-size:12.5px;color:var(--ok);background:var(--ok-soft);border-radius:999px;padding:2px 10px;text-decoration:none}
 .naoatbox ul{margin:6px 0 8px;padding-left:18px;font-size:13.5px}.naoatbox li{margin:2px 0;overflow-wrap:anywhere}
@@ -273,6 +292,7 @@ details.kb dd{margin:0;overflow-wrap:anywhere;white-space:pre-line}
 .falta textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--paper);font-size:14px;resize:vertical;min-height:40px}
 .foot{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .tog{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--muted)}
+.tog[data-dca="alta"][aria-pressed="true"]{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
 .tog[data-act="res"][aria-pressed="true"]{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
 .tog[data-act="alta"][aria-pressed="true"]{background:var(--ok);border-color:var(--ok);color:var(--card)}
 .upd{margin-left:auto;font-size:11.5px;color:var(--muted)}
@@ -780,6 +800,7 @@ dSAmiECD0Adivpo5aHfvbi1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span cl
     <section class="mebar" id="meBar" hidden></section>
     <section class="lembrete" id="lembrete" hidden aria-live="polite"></section>
     <section class="naoatbox" id="naoatBox" hidden></section>
+    <section class="dcbox" id="dcBox" aria-live="polite"></section>
     <section class="tiles" id="tiles" aria-label="Resumo do dia"></section>
     <div class="tools" id="tools">
       <div class="row">
@@ -1310,7 +1331,7 @@ async function buildDay() {
     jobs.push({ id, body: isNew ? { ...BLANK, c } : { c, presente: true }, isNew });
     n++;
   });
-  for (const [id, p] of existing) if (!seen.has(id) && p.presente !== false) jobs.push({ id, body: { presente: false }, isNew: false });
+  for (const [id, p] of existing) if (!seen.has(id) && !String(id).startsWith('dc-') && p.presente !== false) jobs.push({ id, body: { presente: false }, isNew: false });
   try {
     await S.store.putDay(key, { date: D.br(day), censoEm: new Date().toISOString(), total: n, kanban: S.kanbanName || '', units: Object.fromEntries(UNITS.map(u => [u, S.census[u]?.patients.length || 0])) });
     if (S.store.putMany) await S.store.putMany(key, jobs, (k, t) => setStatus('buildStatus', `Salvando… ${k} de ${t}`));
@@ -1342,8 +1363,8 @@ function openDay(key) {
   if (unsubDay) unsubDay();
   unsubDay = S.store.watchDay(key, m => onPatients(m), e => setSync('err', 'Conexão perdida. Recarregue a página.'));
   const prevKey = S.days.map(d => d.id).filter(k => k < key).sort().reverse()[0] || '';
-  S.yestKey = prevKey; S.yest = new Map();
-  if (prevKey) S.store.readDay(prevKey).then(m => { if (S.day !== key) return; S.yest = m; S.yestLoaded = key; renderTiles(); renderChips(); renderList(true); rescue(); carry(); }).catch(() => {});
+  S.yestKey = prevKey; S.yest = new Map(); S.dcY = new Map();
+  if (prevKey) S.store.readDay(prevKey).then(m0 => { if (S.day !== key) return; const m = new Map(), dc = new Map(); for (const [k, v] of m0) (String(k).startsWith('dc-') ? dc : m).set(k, v); S.yest = m; S.dcY = dc; renderDC(); S.yestLoaded = key; renderTiles(); renderChips(); renderList(true); rescue(); carry(); }).catch(() => {});
 }
 /* quem ficou com a tela do dia anterior aberta preencheu lá: traz para o dia atual o que foi feito hoje */
 /* traz do dia anterior HD, o que falta, motivos e pendências não resolvidas, para o médico só conferir */
@@ -1380,7 +1401,9 @@ function rescue() {
   const box = $('handoff'); box.hidden = false;
   box.innerHTML = `<b>${got.length} paciente(s) foram preenchidos hoje na lista de ${esc(D.short(S.yestKey))} (tela antiga aberta no celular).</b> Já trouxe para ${esc(D.short(S.day))}${nA ? `: ${nA} alta(s)` : ''}${nO ? `${nA ? ',' : ':'} ${nO} óbito/transferência` : ''}.`;
 }
-function onPatients(m) {
+function onPatients(m0) {
+  const m = new Map(), dc = new Map(); for (const [k, v] of m0) (String(k).startsWith('dc-') ? dc : m).set(k, v);
+  S.dc = dc; renderDC();
   const before = S.pats; S.pats = m;
   $('main').hidden = !m.size; $('emptyMain').hidden = !!m.size;
   const structural = before.size !== m.size || [...m.keys()].some(k => !before.has(k)) || [...m].some(([k, v]) => (before.get(k)?.presente !== false) !== (v.presente !== false));
@@ -1403,6 +1426,142 @@ function updProg() {
     el.className = 'prog' + (all ? ' ok' : ''); el.textContent = (all ? '✓ ' : '') + done + ' de ' + ps.length + ' atualizados hoje';
   });
 }
+
+
+/* ======================= Day clinic (até 12h de internação) ======================= */
+/* Lista do relatório do sistema (TIPO ATEND, CD ATEND, NM PACIENTE, DT ATEND, NM PROCED, LIM MIN DAY, LIM MAX DAY).
+   Alta entre o mínimo (6h) e o máximo (12h). Fica guardada no bate censo do dia (id "dc-<atendimento>"), sem entrar na contagem de leitos. */
+S.dc = new Map(); S.dcY = new Map();
+const DCMOT = ['Cirurgião registrou alta para amanhã', 'Intercorrência ou complicação', 'Dor, náusea ou vômito', 'Aguarda exame ou avaliação', 'Cirurgia atrasou', 'Sem acompanhante / social', 'Outro'];
+const dcDT = v => { const s = String(v ?? '').trim(); let m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (m) { const y = +m[3] < 100 ? 2000 + +m[3] : +m[3]; return new Date(y, +m[2] - 1, +m[1], +m[4], +m[5], +(m[6] || 0)); }
+  m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/); return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) : null; };
+const DTR = String.raw`\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?`;
+L.parseDC = function (txt, rows) {
+  const out = [], mk = (o) => { const ent = dcDT(o.ent); if (!o.atend || !o.nome || !ent) return; const mn = dcDT(o.min) || new Date(+ent + 6 * 36e5), mx = dcDT(o.max) || new Date(+ent + 12 * 36e5);
+    out.push({ tipo: String(o.tipo || '').trim(), cdPac: String(o.cdPac || '').replace(/\D/g, ''), atend: String(o.atend).replace(/\D/g, ''), nome: String(o.nome).replace(/\s+/g, ' ').trim().toUpperCase(), proc: String(o.proc || '').replace(/\s+/g, ' ').trim(), lim: String(o.lim || '').trim(), ent: ent.toISOString(), min: mn.toISOString(), max: mx.toISOString(), unidade: String(o.unid || '').trim() }); };
+  const grid = rows || String(txt || '').split(/\r?\n/).map(l => l.includes('\t') ? l.split('\t') : null);
+  const hi = grid.findIndex(r => r && r.some(c => /NM\s*PACIENTE|^PACIENTE$/i.test(String(c ?? '').trim())) && r.some(c => /ATEND/i.test(String(c ?? ''))));
+  if (hi >= 0) {
+    const h = grid[hi].map(c => L.norm(c)), ix = re => h.findIndex(c => re.test(c));
+    const I = { tipo: ix(/^TIPO/), cdPac: ix(/^CD PACIENTE/), atend: ix(/^CD ATEND|^ATEND/), nome: ix(/PACIENTE$/), ent: ix(/^DT ATEND|^DATA/), lim: ix(/^LIMITE/), proc: ix(/^NM PROCED|^PROCED/), min: ix(/^LIM MIN/), max: ix(/^LIM MAX/), unid: ix(/UNIDADE/) };
+    if (I.nome === I.cdPac) I.nome = h.findIndex(c => /^NM PACIENTE/.test(c));
+    for (const r of grid.slice(hi + 1)) { if (!r) continue; const g = k => I[k] >= 0 ? r[I[k]] : ''; mk({ tipo: g('tipo'), cdPac: g('cdPac'), atend: g('atend'), nome: g('nome'), ent: g('ent'), lim: g('lim'), proc: g('proc'), min: g('min'), max: g('max'), unid: g('unid') }); }
+    if (out.length) return out;
+  }
+  const re = new RegExp(String.raw`(?:^|\s)([A-Z]{2,8})?\s*(\d{5,})\s+(\d{6,})\s+(.+?)\s+(${DTR})\s+(\d{1,3})\s+(\d{5,})\s+(.+?)\s+(${DTR})\s+(${DTR})\s*(.*)$`, 'i');
+  for (const l of String(txt || '').split(/\r?\n/)) { const m = l.replace(/\t/g, ' ').match(re); if (m) mk({ tipo: m[1], cdPac: m[2], atend: m[3], nome: m[4], ent: m[5], lim: m[6], proc: m[8], min: m[9], max: m[10], unid: m[11] }); }
+  return out;
+};
+const dcWhen = iso => { const d = new Date(iso), t = new Date(); const hm = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); return d.toDateString() === t.toDateString() ? hm : `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${hm}`; };
+const dcDur = ms => { const m = Math.max(0, Math.round(ms / 6e4)), h = Math.floor(m / 60); return h ? `${h}h${String(m % 60).padStart(2, '0')}` : `${m} min`; };
+const dcJust = d => !!((d.mot || []).length || String(d.obs || '').trim());
+function dcState(d) {
+  const now = Date.now(), mx = +new Date(d.max), mn = +new Date(d.min);
+  if (d.altaEm) { const ok = +new Date(d.altaEm) <= mx; return { k: ok ? 'ok' : 'late', t: `Alta às ${dcWhen(d.altaEm)}: ${ok ? 'dentro das 12h ✅' : 'depois das 12h'}` }; }
+  if (now > mx) return { k: 'over', t: `Passou das 12h (limite ${dcWhen(d.max)}, há ${dcDur(now - mx)})${dcJust(d) ? '' : ': justifique abaixo'}` };
+  if (mx - now <= 2 * 36e5) return { k: 'soon', t: `⏰ Faltam ${dcDur(mx - now)}: alta até ${dcWhen(d.max)}` };
+  if (now >= mn) return { k: 'win', t: `Já pode ter alta · limite ${dcWhen(d.max)} (faltam ${dcDur(mx - now)})` };
+  return { k: 'wait', t: `Alta a partir de ${dcWhen(d.min)} · limite ${dcWhen(d.max)}` };
+}
+/* lista do dia + os de ontem que ainda não tiveram alta (atravessaram a meia-noite) */
+/* alta marcada no cartão do censo também vale para o day clinic */
+const dcEff = d => { if (d.altaEm) return d; const p = S.pats.get(d.atend) || S.yest.get(d.atend); return p && p.desfecho === 'alta' && p.desfechoEm ? { ...d, altaEm: p.desfechoEm } : d; };
+function dcAll() {
+  const a = [...S.dc].map(([id, p]) => ({ id, key: S.day, d: dcEff(p.dc || {}) })).filter(x => x.d.atend);
+  for (const [id, p0] of S.dcY) { const p = { dc: dcEff(p0.dc || {}) }; const d = p.dc; if (!d.atend || S.dc.has(id) || d.altaEm || d.removido) continue; if (Date.now() - +new Date(d.max) > 24 * 36e5 && dcJust(d)) continue; a.push({ id, key: S.yestKey, d, ontem: true }); }
+  return a.filter(x => !x.d.removido).sort((x, y) => (x.d.altaEm ? 1 : 0) - (y.d.altaEm ? 1 : 0) || +new Date(x.d.max) - +new Date(y.d.max));
+}
+const dcBed = d => { const p = S.pats.get(d.atend) || [...S.pats.values()].find(p => p.c && L.norm(p.c.name).startsWith(L.norm(d.nome).split(' ').slice(0, 2).join(' '))); return d.leito || (p && p.c ? p.c.bed : ''); };
+function dcTag(id, p) {
+  const e = S.dc.get('dc-' + id) || S.dcY.get('dc-' + id); const d = e && e.dc; if (!d || d.removido) return '';
+  const st = dcState(d); return `<div style="margin-bottom:4px"><span class="dctag ${st.k === 'late' ? 'over' : st.k}">Day clinic · ${esc(st.t)}</span></div>`;
+}
+function dcWrite(key, id, patch, isNew) {
+  if (!S.canWrite || !key) return;
+  const map = key === S.day ? S.dc : S.dcY, prev = map.get(id) || {};
+  const dcp = { ...patch, at: new Date().toISOString(), ...(S.me ? { por: S.me } : {}) };
+  map.set(id, { ...prev, dc: { ...(prev.dc || {}), ...dcp } }); renderDC();
+  S.store.putPatient(key, id, isNew ? { dc: { ...(prev.dc || {}), ...dcp } } : { dc: dcp }, !!isNew).catch(() => setStatus('dcStatus', 'Não consegui salvar. Confira a conexão.', true));
+}
+function renderDC() {
+  const el = $('dcBox'); if (!el) return;
+  if (el.contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName)) { S.dcDirty = true; return; }
+  S.dcDirty = false;
+  const all = dcAll(), sts = all.map(x => dcState(x.d));
+  const n = k => sts.filter(s => s.k === k).length, alert = n('soon') + all.filter((x, i) => sts[i].k === 'over' && !dcJust(x.d)).length;
+  el.classList.toggle('alert', !!alert);
+  const ro = !S.canWrite;
+  el.innerHTML = `<h2>Day clinic · até 12h <small>${all.length ? `${all.length} paciente(s) · ${n('ok')} alta no prazo · ${n('soon')} vencendo · ${n('over') + n('late')} passaram das 12h` : 'nenhum paciente cadastrado hoje'}</small></h2>
+    ${all.length ? '' : '<!--'}<p class="hint" style="margin:0">Alta entre 6h e 12h da entrada. Se o cirurgião combinar alta para o dia seguinte, registre o motivo e o nome dele: isso ajuda a conversar com a coordenação cirúrgica.</p>${all.length ? '' : '-->'}
+    <div class="dc-list">${all.map((x, i) => { const d = x.d, st = sts[i], bed = dcBed(d);
+      return `<div class="dc-it ${st.k}" data-dc="${esc(x.id)}" data-key="${esc(x.key)}">
+        <div class="dc-h"><b>${bed ? esc(bed) + ' – ' : ''}${esc(L.title(d.nome))}</b><span class="m">${esc(d.proc || '')}${d.tipo ? ' · ' + esc(d.tipo) : ''} · entrada ${esc(dcWhen(d.ent))}${x.ontem ? ' · da lista de ontem' : ''}</span></div>
+        <div class="dc-st">${esc(st.t)}</div>
+        ${ro ? '' : `<div class="dc-row"><button class="tog" data-dca="alta" aria-pressed="${!!d.altaEm}">${d.altaEm ? 'Alta registrada' : 'Alta dada agora'}</button><input type="text" data-dcf="cir" placeholder="Cirurgião responsável" value="${esc(d.cir || '')}"><button class="link" data-dca="rm" title="Tirar da lista">remover</button></div>`}
+        ${st.k === 'over' || st.k === 'late' || st.k === 'soon' || dcJust(d) || d.amanha ? `<div class="mots" role="group" aria-label="Por que não saiu no prazo">${DCMOT.map(m => `<button data-dca="mot" data-v="${esc(m)}" aria-pressed="${(d.mot || []).includes(m)}" ${ro ? 'disabled' : ''}>${esc(m)}</button>`).join('')}</div>
+        <textarea data-dcf="obs" rows="1" placeholder="Detalhe (ex.: cirurgião prescreveu alta para amanhã às 8h; dor controlada só à noite)" ${ro ? 'disabled' : ''}>${esc(d.obs || '')}</textarea>` : ''}
+        ${d.por ? `<span class="hint" style="margin:0">atualizado por ${esc(d.por)} às ${esc(dcWhen(d.at))}</span>` : ''}
+      </div>`; }).join('')}</div>
+    ${ro ? '' : `<details><summary>Adicionar pacientes do relatório de day clinic</summary>
+      <p class="hint">Copie a tabela do relatório do sistema (selecione as linhas e copie) e cole aqui, ou envie o Excel/CSV exportado. Também dá para adicionar um paciente à mão.</p>
+      <textarea class="dcpaste" id="dcPaste" placeholder="Cole aqui as linhas do relatório (INTERN 28374039 193761140 ADMIR ... 20/10/26 12:19:44 ...)"></textarea>
+      <div class="row" style="margin-top:6px"><button class="btn primary" id="dcAddPaste">Adicionar à lista</button><label class="btn" style="cursor:pointer">Enviar Excel/CSV<input type="file" id="dcFile" accept=".xlsx,.xls,.csv" hidden></label></div>
+      <div class="dcadd"><input id="dcNome" placeholder="Nome do paciente"><input id="dcLeito" placeholder="Leito"><input id="dcProc" placeholder="Procedimento"><input id="dcEnt" type="datetime-local" aria-label="Entrada"><button class="btn" id="dcAddOne">Adicionar à mão</button></div>
+    </details>`}
+    <div class="row" style="margin-top:8px">${all.length ? '<button class="btn" id="dcWa">Copiar alerta para o WhatsApp</button>' : ''}${'Notification' in window && all.some(x => !x.d.altaEm) ? `<button class="btn" id="dcNotif">${Notification.permission === 'granted' ? 'Avisos ligados neste aparelho ✓' : 'Avisar neste aparelho quando faltar 2h'}</button>` : ''}</div>
+    <p class="status" id="dcStatus"></p>`;
+}
+function dcAdd(list) {
+  if (!list.length) { setStatus('dcStatus', 'Não reconheci pacientes no que foi colado. Confira se as colunas de atendimento, nome e data vieram juntas.', true); return; }
+  let novos = 0;
+  for (const d of list) { const id = 'dc-' + d.atend; if (S.dc.has(id)) continue; dcWrite(S.day, id, d, true); novos++; }
+  setStatus('dcStatus', `${novos} paciente(s) adicionado(s)${list.length - novos ? `; ${list.length - novos} já estavam na lista` : ''}.`);
+}
+function dcWaText() {
+  const all = dcAll(), g = k => all.filter(x => dcState(x.d).k === k), line = x => { const d = x.d, bed = dcBed(d); return `• ${bed ? bed + ' - ' : ''}${d.nome} (${d.proc || 'day clinic'})`; };
+  const out = [`*DAY CLINIC ${H.curto.toUpperCase()} — ${new Date().toLocaleDateString('pt-BR').slice(0, 5)} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}*`];
+  const sec = (t, xs, f) => { if (xs.length) out.push('', `*${t} (${xs.length})*`, ...xs.map(x => line(x) + f(x))); };
+  sec('⛔ Passaram das 12h sem alta', g('over'), x => ` — limite era ${dcWhen(x.d.max)}${dcJust(x.d) ? ' — ' + [...(x.d.mot || []), x.d.obs].filter(Boolean).join('; ') : ' — *sem justificativa*'}`);
+  sec('⏰ Vencendo em até 2h', g('soon'), x => ` — alta até ${dcWhen(x.d.max)}`);
+  sec('Já podem ter alta', g('win'), x => ` — até ${dcWhen(x.d.max)}`);
+  sec('Ainda antes de 6h', g('wait'), x => ` — alta a partir de ${dcWhen(x.d.min)}, limite ${dcWhen(x.d.max)}`);
+  sec('✅ Alta no prazo', g('ok'), x => ` — alta às ${dcWhen(x.d.altaEm)}`);
+  sec('Alta depois das 12h', g('late'), x => ` — alta às ${dcWhen(x.d.altaEm)}${dcJust(x.d) ? ' — ' + [...(x.d.mot || []), x.d.obs].filter(Boolean).join('; ') : ''}`);
+  out.push('', '_Lembrete: day clinic é alta em até 12h. Se o cirurgião combinou alta para amanhã, registre o motivo no bate censo._');
+  return out.join('\n');
+}
+function dcNotify() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  for (const x of dcAll()) { const d = x.d; if (d.altaEm) continue; const left = +new Date(d.max) - Date.now();
+    for (const th of [120, 30, 0]) { if (left > th * 6e4) continue; const k = 'dcn-' + x.id + '-' + th; try { if (localStorage.getItem(k)) continue; localStorage.setItem(k, '1'); } catch (e) {}
+      try { new Notification(`Day clinic ${H.curto}: ${L.title(d.nome)}`, { body: th ? `Faltam ${dcDur(left)} para as 12h (alta até ${dcWhen(d.max)}).` : `Passou das 12h (limite ${dcWhen(d.max)}). Registre a alta ou o motivo.`, tag: k }); } catch (e) {}
+      break; } }
+}
+setInterval(() => { if (!document.hidden) { renderDC(); dcNotify(); } }, 60000);
+$('dcBox').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.id === 'dcAddPaste') { dcAdd(L.parseDC($('dcPaste').value)); $('dcPaste').value = ''; return; }
+  if (b.id === 'dcAddOne') { const nome = $('dcNome').value.trim(), ent = $('dcEnt').value; if (!nome || !ent) { setStatus('dcStatus', 'Preencha o nome e a hora de entrada.', true); return; }
+    const t = new Date(ent); dcAdd([{ tipo: '', cdPac: '', atend: 'm' + Date.now().toString(36), nome: nome.toUpperCase(), proc: $('dcProc').value.trim(), lim: '', ent: t.toISOString(), min: new Date(+t + 6 * 36e5).toISOString(), max: new Date(+t + 12 * 36e5).toISOString(), unidade: '', leito: $('dcLeito').value.trim().toUpperCase() }]); return; }
+  if (b.id === 'dcWa') { const t = dcWaText(); try { await navigator.clipboard.writeText(t); setStatus('dcStatus', 'Alerta copiado. Cole no grupo do plantão.'); } catch (err) { prompt('Copie o alerta:', t); } return; }
+  if (b.id === 'dcNotif') { try { await Notification.requestPermission(); } catch (err) {} renderDC(); dcNotify(); return; }
+  const it = b.closest('[data-dc]'); if (!it) return;
+  const id = it.dataset.dc, key = it.dataset.key, map = key === S.day ? S.dc : S.dcY, d = (map.get(id) || {}).dc || {};
+  if (b.dataset.dca === 'alta') dcWrite(key, id, { altaEm: d.altaEm ? '' : new Date().toISOString() });
+  else if (b.dataset.dca === 'mot') { const v = b.dataset.v, m = d.mot || []; dcWrite(key, id, { mot: m.includes(v) ? m.filter(x => x !== v) : [...m, v], ...(v === DCMOT[0] ? { amanha: !m.includes(v) } : {}) }); }
+  else if (b.dataset.dca === 'rm') { if (confirm('Tirar este paciente da lista de day clinic?')) dcWrite(key, id, { removido: true }); }
+});
+$('dcBox').addEventListener('change', async e => {
+  if (e.target.id === 'dcFile') { const f = e.target.files[0]; if (!f) return;
+    try { let rows; if (/\.csv$/i.test(f.name)) rows = (await f.text()).split(/\r?\n/).map(l => l.split(/;|,|\t/));
+      else { const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: false }); }
+      dcAdd(L.parseDC('', rows)); } catch (err) { setStatus('dcStatus', 'Não consegui ler ' + f.name, true); }
+    e.target.value = ''; return; }
+  const it = e.target.closest('[data-dc]'); if (!it || !e.target.dataset.dcf) return;
+  dcWrite(it.dataset.key, it.dataset.dc, { [e.target.dataset.dcf]: e.target.value.trim() });
+});
+$('dcBox').addEventListener('focusout', () => { if (S.dcDirty) setTimeout(renderDC, 50); });
 
 /* ======================= render ======================= */
 function stats() {
@@ -1533,7 +1692,7 @@ function card(id, p) {
   const upd = [p.desfecho && p.desfechoEm ? (p.desfecho === 'alta' ? 'alta' : DESF[p.desfecho].toLowerCase()) + ' às ' + D.hm(p.desfechoEm) : '', p.resolvido && p.resolvidoEm ? 'resolvido às ' + D.hm(p.resolvidoEm) : '', p.atualizado ? 'atualizado às ' + D.hm(p.atualizado) : ''].filter(Boolean)[0] || '';
   const updBy = upd && p.por ? `${upd} · ${esc(p.por)}` : upd;
   return `<article class="${cls}" data-id="${esc(id)}">
-    <div class="pt-head"><span class="bed">${esc(c.bed)}</span><div class="who"><div class="n">${esc(c.name)}</div><div class="m">${meta}</div></div><span class="days ${daysCls}" title="Dias de internação">${c.dias ?? '?'} d</span></div>
+    ${dcTag(id, p)}<div class="pt-head"><span class="bed">${esc(c.bed)}</span><div class="who"><div class="n">${esc(c.name)}</div><div class="m">${meta}</div></div><span class="days ${daysCls}" title="Dias de internação">${c.dias ?? '?'} d</span></div>
     ${naoAt(p) ? `<div class="flag" role="note">⚠ <b>Leito não atualizado hoje</b>${c.visitador ? ' · médico: ' + esc(c.visitador) : ' · sem médico na divisão'}${p.herdou ? ' · dados de ' + esc(D.short(p.herdou)) + ' trazidos, confira' : ''}</div>` : ''}
     ${c.diag ? `<p class="clin"><b>${esc(c.diag.replace(/\n/g, ' '))}</b>${c.plano && !/^(N\/?A)$/i.test(c.plano) ? ' · ' + esc(c.plano.replace(/\n/g, ' ')) : ''}</p>` : ''}
     ${['obito', 'uti', 'outra'].includes(p.desfecho) ? `<span class="outtag">${esc(DESF[p.desfecho])}</span>` : ''}
