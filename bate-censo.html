@@ -293,6 +293,10 @@ details.kb dd{margin:0;overflow-wrap:anywhere;white-space:pre-line}
 .kbcopy{margin-top:4px;border:1px dashed var(--line);background:transparent;border-radius:6px;padding:3px 8px;font-size:12px;font-weight:700;color:var(--brand);cursor:pointer}
 .falta textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--paper);font-size:14px;resize:vertical;min-height:40px}
 .foot{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.pt.excl fieldset,.pt.excl .kb,.pt.excl .clin,.pt.excl .sug,.pt.excl .flag,.pt.excl .yest:not(.xl){display:none}
+.pt.excl{opacity:.85}
+.xbtn{font-size:12px!important;font-weight:600;color:var(--muted)!important;margin-left:6px}
+.group h2 button.link{border:0;background:none;text-decoration:underline;cursor:pointer;padding:0}
 .tog{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--muted)}
 .tog[data-dca="alta"][aria-pressed="true"]{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
 .tog[data-act="res"][aria-pressed="true"]{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
@@ -1201,7 +1205,9 @@ const FALTA_LBL = { efetivada: 'Observação', tarde: 'O que falta para a alta h
 
 const lng = p => p.c?.team === 'RP' && (p.c?.dias ?? 0) > 3;
 const d4 = p => p.c?.team === 'RP' && (p.c?.dias ?? 0) === 3;
-const present = p => p.presente !== false;
+/* excluído = não entra no bate censo (ex.: paciente da pediatria num posto da CM) */
+const present = p => p.presente !== false && !p.excluido;
+const saiu = p => p.presente === false && !p.excluido;
 const hasPend = p => !!String(p.pend || '').trim();
 const isAlta = p => p.desfecho === 'alta' || (p.prev === 'efetivada' && !p.desfecho);
 const openPend = p => present(p) && !p.resolvido && !isAlta(p) && !p.desfecho && (hasPend(p) || ((p.prev === 'tarde' || p.prev === '24h') && !!String(p.falta || '').trim()));
@@ -1238,7 +1244,8 @@ const FILTERS = [
   ['pend', 'Pendências abertas', openPend],
   ['long', H.vs ? 'RP com mais de 3 dias' : 'Mais de 3 dias', p => present(p) && lng(p)],
   ['altas', 'Altas do dia', isAlta],
-  ['saiu', 'Saíram do censo', p => !present(p)]
+  ['saiu', 'Saíram do censo', saiu],
+  ['excl', 'Excluídos', p => !!p.excluido]
 ];
 const fOf = k => FILTERS.find(f => f[0] === k)[2];
 
@@ -1380,6 +1387,7 @@ function carry() {
     if (!t.falta && y.falta && !y.desfecho && y.prev !== 'efetivada') patch.falta = y.falta;
     if (!(t.mot || []).length && (y.mot || []).length && !y.desfecho) patch.mot = y.mot;
     if (!t.pend && y.pend && !y.resolvido) patch.pend = y.pend;
+    if (y.excluido && !t.excluido) patch.excluido = true;
     if (!Object.keys(patch).length) continue;
     patch.herdou = S.yestKey; write(id, patch, true);
   }
@@ -1408,7 +1416,7 @@ function onPatients(m0) {
   S.dc = dc; renderDC();
   const before = S.pats; S.pats = m;
   $('main').hidden = !m.size; $('emptyMain').hidden = !!m.size;
-  const structural = before.size !== m.size || [...m.keys()].some(k => !before.has(k)) || [...m].some(([k, v]) => (before.get(k)?.presente !== false) !== (v.presente !== false));
+  const structural = before.size !== m.size || [...m.keys()].some(k => !before.has(k)) || [...m].some(([k, v]) => (before.get(k)?.presente !== false) !== (v.presente !== false) || !!before.get(k)?.excluido !== !!v.excluido);
   renderTiles(); renderChips(); setTimeout(rescue, 0); setTimeout(carry, 0);
   if (structural || !$('list').children.length) { renderList(true); return; }
   for (const [id, p] of m) {
@@ -1670,7 +1678,7 @@ function stats() {
     media: rp.length ? rp.reduce((a, p) => a + (p.c?.dias || 0), 0) / rp.length : 0,
     efetivada: cnt(isAlta), tarde: cnt(p => p.prev === 'tarde'), h24: cnt(p => p.prev === '24h'), sem: cnt(p => p.prev === 'sem'),
     nao: pr.filter(p => !touched(p)).length, pend: cnt(openPend), pdia: all.filter(p => present(p) && hasPend(p)).length, pdiaRes: all.filter(p => present(p) && hasPend(p) && p.resolvido).length, altas: altas.length, altasRp: altas.filter(p => p.c?.team === 'RP').length, obitos: cnt(p => p.desfecho === 'obito'), utis: cnt(p => p.desfecho === 'uti'), outras: cnt(p => p.desfecho === 'outra'), dd: pr.filter(p => p.dd).length,
-    saiu: cnt(p => !present(p)) };
+    saiu: cnt(saiu), excl: cnt(p => !!p.excluido) };
 }
 function renderLembrete() {
   const el = $('lembrete'); if (!el) return;
@@ -1748,7 +1756,7 @@ function renderTiles() {
 }
 function renderChips() {
   const all = [...S.pats.values()], ent = [...S.pats];
-  $('fChips').innerHTML = FILTERS.filter(([k]) => (k !== 'saiu' || all.some(p => !present(p))) && (k !== 'ontem' || S.yest.size)).map(([k, lab, fn]) => `<button class="chip" data-f="${k}" aria-pressed="${S.f === k}">${lab}<b>${ent.filter(([id, p]) => fn(p, id)).length}</b></button>`).join('');
+  $('fChips').innerHTML = FILTERS.filter(([k]) => (k !== 'saiu' || all.some(saiu)) && (k !== 'excl' || all.some(p => p.excluido)) && (k !== 'ontem' || S.yest.size)).map(([k, lab, fn]) => `<button class="chip" data-f="${k}" aria-pressed="${S.f === k}">${lab}<b>${ent.filter(([id, p]) => fn(p, id)).length}</b></button>`).join('');
   $('unitChips').innerHTML = ['todos', ...UNITS].map(u => `<button class="chip" data-u="${u}" aria-pressed="${S.unit === u}">${u === 'todos' ? 'Todos os postos' : (/^\d+$/.test(u) ? 'Posto ' : '') + u}</button>`).join('');
   document.querySelectorAll('.seg [data-g]').forEach(b => b.setAttribute('aria-pressed', b.dataset.g === S.group));
 }
@@ -1763,23 +1771,25 @@ function renderList(full) {
   const groups = new Map();
   for (const [id, p] of rows.sort((a, b) => bedSort(a[1], b[1]))) {
     let g;
-    if (!present(p) && S.f !== 'saiu' && S.f !== 'altas') g = 'Saíram do censo (provável alta)';
+    if (p.excluido) g = 'Excluídos do bate censo';
+    else if (!present(p) && S.f !== 'saiu' && S.f !== 'altas') g = 'Saíram do censo (provável alta)';
     else if (S.group === 'medico') g = p.c.visitador || (p.c.prescriber ? `Sem divisão · prescreveu ontem: ${p.c.prescriber}` : 'Sem médico definido');
     else g = 'Posto ' + p.c.unit;
     if (!groups.has(g)) groups.set(g, []); groups.get(g).push([id, p]);
   }
-  const order = [...groups.keys()].sort((a, b) => (a.startsWith('Saíram') - b.startsWith('Saíram')) || (a.startsWith('Sem') - b.startsWith('Sem')) || a.localeCompare(b, 'pt'));
+  const order = [...groups.keys()].sort((a, b) => (a.startsWith('Excluídos') - b.startsWith('Excluídos')) || (a.startsWith('Saíram') - b.startsWith('Saíram')) || (a.startsWith('Sem') - b.startsWith('Sem')) || a.localeCompare(b, 'pt'));
   $('list').innerHTML = order.map(g => {
     const ps = groups.get(g);
     const rp = ps.filter(([, p]) => p.c.team === 'RP').length, lg = ps.filter(([, p]) => lng(p)).length;
     const pres = ps.filter(([, p]) => present(p)), done = pres.filter(([, p]) => touched(p)).length;
     const prog = pres.length ? `<span class="prog ${done === pres.length ? 'ok' : ''}">${done === pres.length ? '✓ ' : ''}${done} de ${pres.length} atualizados hoje</span>` : '';
-    return `<section class="group"><h2>${esc(g)} ${prog} <small>${nv(`${ps.length} paciente(s) · RP ${rp} · VS ${ps.length - rp}${lg ? ` · ${lg} RP acima de 3 dias` : ''}`)}</small></h2><div class="cards">${ps.map(([id, p]) => card(id, p)).join('')}</div></section>`;
+    const xbtn = !S.canWrite ? '' : g.startsWith('Posto ') && pres.length ? ` <button class="link xbtn" data-xunit="${esc(g.slice(6))}">excluir posto do bate censo</button>` : g.startsWith('Excluídos') ? ` <button class="link xbtn" data-xrest="1">restaurar todos</button>` : '';
+    return `<section class="group"><h2>${esc(g)} ${prog}${xbtn} <small>${nv(`${ps.length} paciente(s) · RP ${rp} · VS ${ps.length - rp}${lg ? ` · ${lg} RP acima de 3 dias` : ''}`)}</small></h2><div class="cards">${ps.map(([id, p]) => card(id, p)).join('')}</div></section>`;
   }).join('');
 }
 function card(id, p) {
   const c = p.c || {}, ro = !S.canWrite;
-  const cls = ['pt', naoAt(p) ? 'naoat' : '', lng(p) ? 'long' : d4(p) ? 'd4' : '', present(p) ? '' : 'gone', isAlta(p) ? 'done-alta' : p.desfecho ? 'done-out' : ''].join(' ');
+  const cls = ['pt', p.excluido ? 'excl' : '', naoAt(p) ? 'naoat' : '', lng(p) ? 'long' : d4(p) ? 'd4' : '', present(p) ? '' : 'gone', isAlta(p) ? 'done-alta' : p.desfecho ? 'done-out' : ''].join(' ');
   const daysCls = lng(p) ? 'long' : d4(p) ? 'd4' : '';
   const y = S.yest.get(id);
   const yTxt = y && (y.prev || y.falta) ? `<div class="yest ${dueYest(id) && !isAlta(p) ? 'due' : ''}">${dueYest(id) && !isAlta(p) ? '⏰ <b>Alta prevista para hoje.</b> ' : ''}<b>Bate censo de ${D.short(S.yestKey)}:</b> ${esc(PREV[y.prev] || 'sem marcação')}${y.falta ? ' · ' + esc(y.falta) : ''}${y.resolvido ? ' · resolvido' : ''}</div>` : '';
@@ -1794,7 +1804,7 @@ function card(id, p) {
     ${naoAt(p) ? `<div class="flag" role="note">⚠ <b>Leito não atualizado hoje</b>${c.visitador ? ' · médico: ' + esc(c.visitador) : ' · sem médico na divisão'}${p.herdou ? ' · dados de ' + esc(D.short(p.herdou)) + ' trazidos, confira' : ''}</div>` : ''}
     ${c.diag ? `<p class="clin"><b>${esc(c.diag.replace(/\n/g, ' '))}</b>${c.plano && !/^(N\/?A)$/i.test(c.plano) ? ' · ' + esc(c.plano.replace(/\n/g, ' ')) : ''}</p>` : ''}
     ${['obito', 'uti', 'outra'].includes(p.desfecho) ? `<span class="outtag">${esc(DESF[p.desfecho])}</span>` : ''}
-    ${!present(p) ? '<div class="yest"><b>Não está no último censo carregado.</b> Se saiu de alta, marque Alta abaixo.</div>' : ''}
+    ${p.excluido ? `<div class="yest xl"><b>Excluído do bate censo</b> (não entra nas contagens nem nos avisos).${ro ? '' : ' <button class="link" data-act="excl">Restaurar</button>'}</div>` : !present(p) ? '<div class="yest"><b>Não está no último censo carregado.</b> Se saiu de alta, marque Alta abaixo.</div>' : ''}
     ${yTxt}${sug}
     ${kb.length ? `<details class="kb"><summary>${H.kanban ? 'Kanban e censo' : 'Dados do censo'}</summary><dl>${kb.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl></details>` : ''}
     <fieldset class="ro" ${ro ? 'disabled' : ''}>
@@ -1803,7 +1813,7 @@ function card(id, p) {
       <div class="prev" role="group" aria-label="Previsão de alta">${Object.entries(PREV).map(([v, lab]) => `<button data-act="prev" data-v="${v}" aria-pressed="${v === 'efetivada' ? isAlta(p) : p.prev === v && !p.desfecho}">${lab}</button>`).join('')}</div>
       <div class="falta"><label for="f-${esc(id)}">${FALTA_LBL[p.prev || '']}${carryLbl(id, p, 'falta')}</label>${p.prev === 'efetivada' || p.desfecho ? '' : `<div class="mots" role="group" aria-label="O que falta">${MOTF.map(m => `<button data-act="mot" data-v="${esc(m)}" aria-pressed="${(p.mot || []).includes(m)}">${esc(m)}</button>`).join('')}</div>`}<textarea id="f-${esc(id)}" data-act="falta" rows="2" placeholder="${p.prev === 'sem' ? 'Ex.: aguarda vaga de UTI, antibiótico até 12/10' : 'Ex.: resultado de eco, parecer da cirurgia, autorização'}">${esc(p.falta)}</textarea></div>
       <div class="falta"><label for="p-${esc(id)}">Pendências do dia${carryLbl(id, p, 'pend')}</label><textarea id="p-${esc(id)}" data-act="pend" rows="2" placeholder="Ex.: coletar labs, RX tórax, parecer da uro, ligar para família">${esc(p.pend || '')}</textarea>${!ro && !hasPend(p) && L.openKb(c).length ? `<button class="kbcopy" data-act="kbcopy">Trazer pendências do kanban (${L.openKb(c).length})</button>` : ''}</div>
-      <div class="foot"><button class="tog" data-act="res" aria-pressed="${!!p.resolvido}">Pendência resolvida</button><select class="desf ${['obito', 'uti', 'outra'].includes(p.desfecho) ? 'on' : ''}" data-act="desf" aria-label="Outro desfecho"><option value="">Outro desfecho…</option>${['obito', 'uti', 'outra'].map(v => `<option value="${v}" ${p.desfecho === v ? 'selected' : ''}>${v === 'obito' ? 'Óbito' : v === 'uti' ? 'Transf. UTI' : 'Transf. outra unidade'}</option>`).join('')}</select><button class="tog" data-act="dd" aria-pressed="${!!p.dd}">DD/DHD</button><span class="upd">${updBy}</span></div>
+      <div class="foot"><button class="tog" data-act="res" aria-pressed="${!!p.resolvido}">Pendência resolvida</button><select class="desf ${['obito', 'uti', 'outra'].includes(p.desfecho) ? 'on' : ''}" data-act="desf" aria-label="Outro desfecho"><option value="">Outro desfecho…</option>${['obito', 'uti', 'outra'].map(v => `<option value="${v}" ${p.desfecho === v ? 'selected' : ''}>${v === 'obito' ? 'Óbito' : v === 'uti' ? 'Transf. UTI' : 'Transf. outra unidade'}</option>`).join('')}</select><button class="tog" data-act="dd" aria-pressed="${!!p.dd}">DD/DHD</button>${p.excluido ? '' : '<button class="tog" data-act="excl" title="Ex.: paciente da pediatria ou que não é da clínica médica">Excluir</button>'}<span class="upd">${updBy}</span></div>
     </fieldset>
   </article>`;
 }
@@ -1819,6 +1829,15 @@ function write(id, patch, auto) {
   S.store.putPatient(S.day, id, body, false).catch(e => { if (e?.code === 'invalid_argument') { S.canWrite = false; setSync('ro', 'Só leitura'); renderList(true); } else setStatus('outStatus', 'Não consegui salvar a última alteração. Confira a conexão.', true); });
 }
 $('list').addEventListener('click', e => {
+  const xu = e.target.closest('[data-xunit]'), xr = e.target.closest('[data-xrest]'); if (!xu && !xr) return;
+  const now = new Date().toISOString();
+  const ids = [...S.pats].filter(([, p]) => p.c && (xu ? present(p) && p.c.unit === xu.dataset.xunit : p.excluido)).map(([id]) => id);
+  if (!ids.length) return;
+  if (xu && !confirm(`Excluir os ${ids.length} paciente(s) do posto ${xu.dataset.xunit} do bate censo de hoje?\n\nEles saem das contagens e dos avisos. Dá para restaurar depois no filtro "Excluídos".`)) return;
+  ids.forEach(id => write(id, { excluido: !!xu, excluidoEm: now }));
+  setStatus('outStatus', xu ? `${ids.length} paciente(s) do posto ${xu.dataset.xunit} excluído(s) do bate censo.` : `${ids.length} paciente(s) restaurado(s).`);
+});
+$('list').addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b || b.tagName === 'TEXTAREA') return;
   const id = b.closest('.pt')?.dataset.id; const p = S.pats.get(id); if (!p) return;
   const act = b.dataset.act, now = new Date().toISOString();
@@ -1829,6 +1848,7 @@ $('list').addEventListener('click', e => {
   else if (act === 'mot') { const cur = p.mot || [], m = b.dataset.v; write(id, { mot: cur.includes(m) ? cur.filter(x => x !== m) : [...cur, m] }); }
   else if (act === 'motivo') { const ta = document.getElementById('n-' + id), cur = (ta ? ta.value : p.naosaiu || '').trim(), m = b.dataset.v; clearTimeout(S.timers.get(id + '|naosaiu')); const parts = cur ? cur.split(/\s*;\s*/) : []; write(id, { naosaiu: parts.includes(m) ? parts.filter(x => x !== m).join('; ') : (cur ? cur + '; ' + m : m) }); }
   else if (act === 'dd') write(id, { dd: !p.dd });
+  else if (act === 'excl') write(id, { excluido: !p.excluido, excluidoEm: now });
   else if (act === 'res') write(id, { resolvido: !p.resolvido, resolvidoEm: p.resolvido ? '' : now });
 
 });
@@ -1870,7 +1890,7 @@ drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') 
 $('build').addEventListener('click', buildDay);
 
 /* ======================= saídas ======================= */
-const sorted = fn => [...S.pats.values()].filter(p => p.c && fn(p)).sort(bedSort);
+const sorted = fn => [...S.pats.values()].filter(p => p.c && !p.excluido && fn(p)).sort(bedSort);
 const pline = p => `${p.resolvido ? '✅' : '☐'} ${p.c.bed} - ${L.norm(p.c.name)}: ${String(p.pend).trim().replace(/\s*\n\s*/g, '; ')}`;
 const jline = p => line(p) + (justTxt(p) ? ` — *Por que não saiu:* ${justTxt(p)}` : ' — ⚠️ _sem justificativa_');
 const line = p => `• ${p.c.bed} - ${L.norm(p.c.name)} (${H.vs ? p.c.team + ', ' : ''}${p.c.dias ?? '?'}d)${p.falta ? ' — ' + p.falta.replace(/\s*\n\s*/g, '; ') : ''}${isAlta(p) ? ' ✅ alta' : p.desfecho ? ' → ' + DESF[p.desfecho].toLowerCase() : p.resolvido ? ' ✅ resolvido' : ''}`;
@@ -1900,7 +1920,7 @@ function naoAtTxt(out) {
 function waFim() {
   const s = stats(); const out = headTxt(`BATE CENSO ${H.curto.toUpperCase()} · FECHAMENTO DO DIA`);
   const prevHoje = sorted(p => p.prev === 'tarde' || (isAlta(p) && p.prevAntes === 'tarde'));
-  const dueAll = [...S.pats].filter(([id, p]) => p.c && dueYest(id)).map(([, p]) => p).sort(bedSort);
+  const dueAll = [...S.pats].filter(([id, p]) => p.c && !p.excluido && dueYest(id)).map(([, p]) => p).sort(bedSort);
   out.push(nv(`Altas do dia: ${s.altas} (RP ${s.altasRp} · VS ${s.altas - s.altasRp})`), `Previstas para hoje à tarde: ${prevHoje.length} · saíram ${prevHoje.filter(isAlta).length}`);
   if (dueAll.length) out.push(`Previstas ontem (${D.short(S.yestKey)}) para hoje: ${dueAll.length} · saíram ${dueAll.filter(p => isAlta(p) || !present(p)).length}`);
   const sec = (t, ps) => { if (ps.length) out.push('', `*${t} (${ps.length})*`, ...ps.map(line)); };

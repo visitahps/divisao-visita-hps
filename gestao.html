@@ -892,6 +892,8 @@ async function loadAll() {
   S.acoes = a.acoes || {};
   const bfrom = D.add(today(), -40);
   await Promise.all(HIDS.filter(h => HOSPS[h].bc).map(h => API({ op: 'bc', hosp: h, from: bfrom }, true).then(j => { S.bc[h] = j.bc || {}; }).catch(() => { S.bc[h] = {}; })));
+  // pacientes excluídos no bate censo (ex.: pediatria em posto da CM) não entram nos indicadores
+  for (const h of Object.keys(S.cen)) for (const [d, c] of Object.entries(S.cen[h])) { const b = (S.bc[h] || {})[d]; if (b) c.pats = c.pats.filter(p => !(b[p.id] && b[p.id].excluido)); }
   const days = allDays();
   if (!S.day || !days.includes(S.day)) S.day = days[0] || today();
   setSync('ok', 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
@@ -1042,7 +1044,7 @@ function series(h) {
     const nx = days[i + 1], pv = days[i - 1];
     const nIds = nx ? new Set(cen[nx].pats.map(p => p.id)) : null, pIds = pv ? new Set(cen[pv].pats.map(p => p.id)) : null;
     return { day: d, total: pats.length, pats, long: pats.filter(p => isLong(h, p)).length, next: nx || null, gap: nx ? D.diff(d, nx) : null,
-      saidas: nIds ? pats.filter(p => !nIds.has(p.id)) : null, entradas: pIds ? pats.filter(p => !pIds.has(p.id)) : null };
+      saidas: nIds ? pats.filter(p => !nIds.has(p.id) && !((S.bc[h] || {})[nx]?.[p.id]?.excluido)) : null, entradas: pIds ? pats.filter(p => !pIds.has(p.id)) : null };
   });
 }
 function period() {

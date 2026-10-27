@@ -168,7 +168,7 @@ function lerBC(ss, nome, desde) {
     const dia = String(r[1]); if (!r[0] || dia < desde) return;
     let d = {}; try { d = JSON.parse(r[17]); } catch (x) { return; }
     (out[dia] = out[dia] || {})[String(r[0]).split('|')[1]] = { prev: d.prev || '', prevAntes: d.prevAntes || '', desfecho: d.desfecho || '', desfechoEm: d.desfechoEm || '',
-      falta: d.falta || '', pend: d.pend || '', naosaiu: d.naosaiu || '', hd: d.hd || '', mot: d.mot || [], por: d.por || '', tocado: d.tocado || '', presente: d.presente !== false, dd: !!d.dd, visitador: (d.c && d.c.visitador) || '', cel: (d.c && d.c.cel) || '', atualizado: d.atualizado || '', dc: d.dc || null };
+      falta: d.falta || '', pend: d.pend || '', naosaiu: d.naosaiu || '', hd: d.hd || '', mot: d.mot || [], por: d.por || '', tocado: d.tocado || '', presente: d.presente !== false, dd: !!d.dd, visitador: (d.c && d.c.visitador) || '', cel: (d.c && d.c.cel) || '', atualizado: d.atualizado || '', dc: d.dc || null, excluido: !!d.excluido };
   });
   return out;
 }
@@ -197,7 +197,7 @@ function sincronizarCensos(ss, desde) {
     pac.getDataRange().getValues().slice(1).forEach(r => {
       const dia = String(r[1]); if (!r[0] || dia < desde) return;
       let d = {}; try { d = JSON.parse(r[17]); } catch (x) { return; }
-      if (d.presente === false || !d.c) return;
+      if (d.presente === false || d.excluido || !d.c) return;
       const c = d.c;
       (porDia[dia] = porDia[dia] || []).push([String(r[0]).split('|')[1], c.unit || '', c.bed || '', c.name || '', c.conv || '', c.team || 'RP', c.dias == null ? null : c.dias, c.intern || '', c.prescriber || '', c.proc || '']);
     });
