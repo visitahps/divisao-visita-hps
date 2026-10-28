@@ -138,13 +138,13 @@ a{display:block;margin:8px 0;padding:12px 18px;border-radius:10px;background:var
       if (cfg && cfg.u && cfg.c) localStorage.setItem(KEY, JSON.stringify({ u: cfg.u, c: cfg.c }));
     }
   } catch (e) {}
-  try { cfg = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
-  try { var x = JSON.parse(localStorage.getItem(LKEY) || '{}'); bc = !!(x.days && x.days[k]); } catch (e) {}
-  if (cfg && cfg.u && cfg.c) {
-    bc = false;
+  // com login (celular + senha): confere se o bate censo de hoje já existe; sem login, a própria tela pede para entrar
+  var A = null; try { A = JSON.parse(localStorage.getItem('hps-login') || 'null'); } catch (e) {}
+  if (A && A.exp > Date.now() && A.h && A.h.indexOf(hosp) < 0 && A.h.length && !m) { hosp = A.h[0]; try { localStorage.setItem('hps-hosp', hosp); } catch (e) {} }
+  if (A && A.t && A.exp > Date.now() && A.h && (A.h.indexOf(hosp) >= 0 || A.h.indexOf('*') >= 0)) {
     try {
       var ctl = new AbortController(); setTimeout(function () { ctl.abort(); }, 6000);
-      var r = await fetch(cfg.u + '?op=days&code=' + encodeURIComponent(cfg.c), { signal: ctl.signal });
+      var r = await fetch(URL0, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ op: 'days', code: A.t, hosp: hosp }), signal: ctl.signal });
       var j = await r.json(); bc = !!(j.ok && (j.days || []).some(function (z) { return String(z.id) === k; }));
     } catch (e) {}
   }

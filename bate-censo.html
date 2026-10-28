@@ -321,6 +321,21 @@ fieldset.ro{border:0;margin:0;padding:0;min-width:0;display:grid;gap:7px}
 .sitenav{display:flex;gap:4px;background:#EDF1F8;border-radius:999px;padding:3px}
 .sitenav a{padding:6px 14px;border-radius:999px;font-size:14px;font-weight:700;color:#5B6478;text-decoration:none;white-space:nowrap}
 .sitenav a[aria-current=page]{background:#1739AA;color:#FFFFFF}
+.authov{position:fixed;inset:0;z-index:9999;background:var(--paper);overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:24px 16px}
+body.authlock{overflow:hidden}
+.authbox{width:100%;max-width:420px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 18px 14px;margin-top:4vh;box-shadow:0 8px 30px rgba(20,33,90,.08)}
+.authbox h2{margin:0;font-size:20px;color:var(--brand)}.authsub{margin:2px 0 12px;color:var(--muted);font-size:13.5px}
+.authtabs{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}.authtabs button{flex:1 1 auto;border:1px solid var(--line);background:var(--soft);color:var(--ink);border-radius:8px;padding:7px 8px;font-weight:700;font-size:13px;cursor:pointer}
+.authtabs button[aria-selected="true"]{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.authbox form{display:grid;gap:9px}.authbox label{display:grid;gap:3px;font-size:13px;font-weight:700;color:var(--muted)}
+.authbox input:not([type=checkbox]){padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit;font-size:15px}
+.authbox fieldset{border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin:0}.authbox legend{font-size:12.5px;font-weight:700;color:var(--muted)}
+.authck{display:flex!important;grid-template-columns:none;align-items:center;gap:6px;font-weight:600!important;color:var(--ink)!important}
+.authgo{background:var(--brand);color:var(--brand-ink);border:0;border-radius:8px;padding:10px;font-weight:800;font-size:15px;cursor:pointer}.authgo:disabled{opacity:.6}
+.authhint{margin:0;color:var(--muted);font-size:12.5px}.authmsg{min-height:18px;margin:10px 0 0;font-size:13.5px;font-weight:700;color:var(--long,#C0271E)}.authmsg.ok{color:var(--ok,#1F7A4A)}
+.authlgpd{margin:8px 0 0;font-size:11.5px;color:var(--muted)}
+#authBar a{opacity:.85}
+
 </style>
 </head>
 <body>
@@ -1097,10 +1112,92 @@ function makeDb(db) {
 }
 
 /* lista compartilhada numa planilha Google (Apps Script), sem login */
+/* ======================= login dos médicos (LGPD) ======================= */
+const AUTH_URL = 'https://script.google.com/macros/s/AKfycbxkGguEX2yO0-5BY8Fkt8XiumbxyW7xmHRL9-Bqr2X1UxhlPirm34OSDXAn4FSCNvD7mQ/exec';
+const AUTH_K = 'hps-login';
+const AUTH_HS = [['hps', 'Hospital Paulo Sacramento'], ['hjan', 'Hospital Jardim Anália'], ['hcru', 'Hospital Cruzeiro do Sul'], ['hbos', 'Hospital Bosque da Saúde'], ['hros', 'Hospital N. Sra. do Rosário']];
+const Auth = {
+  get() { try { const a = JSON.parse(localStorage.getItem(AUTH_K) || 'null'); return a && a.t && a.exp > Date.now() + 60000 ? a : null; } catch (e) { return null; } },
+  set(a) { try { localStorage.setItem(AUTH_K, JSON.stringify(a)); } catch (e) {} },
+  can(h) { const a = Auth.get(); return !!a && ((a.h || []).includes('*') || (a.h || []).includes(h)); },
+  /* sair: apaga o login e os dados de pacientes guardados neste aparelho (as alterações ainda não enviadas ficam) */
+  out() {
+    try { Object.keys(localStorage).filter(k => k === AUTH_K || /^hps-(historico|bate-censo-v1|planilha)/.test(k)).forEach(k => localStorage.removeItem(k)); } catch (e) {}
+    try { indexedDB.deleteDatabase('hps-visita'); } catch (e) {}
+  }
+};
+async function authApi(body) {
+  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 30000);
+  try { const r = await fetch(AUTH_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), signal: ctl.signal }); return await r.json(); }
+  catch (e) { return { ok: false, erro: 'rede' }; } finally { clearTimeout(tm); }
+}
+const AUTH_MSG = { naocadastrado: 'E-mail não cadastrado. Use o mesmo e-mail do Pega Plantão. Se não estiver na lista, use "Pedir acesso".', primeiro: 'Seu cadastro já existe: crie sua senha em "Primeiro acesso".',
+  pendente: 'Seu pedido está aguardando liberação do coordenador.', bloqueado: 'Acesso bloqueado. Fale com o coordenador.', senha: 'Senha incorreta.', muitas: 'Muitas tentativas. Aguarde 15 minutos.',
+  crm: 'O CRM não confere com o cadastro.', semcrm: 'Seu cadastro está sem CRM. Use "Pedir acesso".', naolista: 'Seu e-mail não está na lista da escala. Use "Pedir acesso".', jaativo: 'Você já tem senha. Use "Entrar".',
+  senhacurta: 'A senha precisa ter pelo menos 6 caracteres.', senhapadrao: 'Escolha uma senha diferente da senha padrão.', dados: 'Preencha nome e e-mail.', email: 'Digite um e-mail válido.', rede: 'Sem conexão com o servidor. Confira a internet e tente de novo.', hosp: 'Seu acesso não inclui esta unidade.' };
+function authGate(hosp) {
+  return new Promise(resolve => {
+    document.querySelectorAll('.authov').forEach(x => x.remove());
+    const ov = document.createElement('div'); ov.className = 'authov'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true');
+    const esc2 = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const hn = (AUTH_HS.find(x => x[0] === hosp) || [, ''])[1];
+    ov.innerHTML = `<div class="authbox">
+      <h2>Enfermarias Hapvida</h2><p class="authsub">${hn ? esc2(hn) + ' · ' : ''}acesso restrito à equipe médica</p>
+      <div class="authtabs" role="tablist"><button data-tab="in" aria-selected="true">Entrar</button><button data-tab="pri" aria-selected="false">Primeiro acesso</button><button data-tab="ped" aria-selected="false">Pedir acesso</button></div>
+      <form data-af="in"><label>E-mail<input name="email" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="seu@email.com" required></label><label>Senha<input name="senha" type="password" autocomplete="current-password" required></label><button class="authgo">Entrar</button>
+        <p class="authhint">Primeira vez? Entre com seu e-mail (o mesmo do Pega Plantão) e a senha padrão que a coordenação passou: o app pede para você criar a sua. Esqueceu a senha? Peça ao coordenador para redefinir.</p></form>
+      <form data-af="nova" hidden><p class="authhint"><b>Crie sua senha pessoal.</b> A senha padrão só vale para este primeiro acesso.</p><label>Nova senha (mínimo 6)<input name="senha" type="password" autocomplete="new-password" minlength="6" required></label><label>Repita a nova senha<input name="senha2" type="password" autocomplete="new-password" required></label><button class="authgo">Salvar senha e entrar</button></form>
+      <form data-af="pri" hidden><p class="authhint">Para quem já está na escala: confirme seu e-mail e seu CRM e crie a senha.</p><label>E-mail<input name="email" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="seu@email.com" required></label><label>CRM<input name="crm" inputmode="numeric" required></label><label>Crie uma senha (mínimo 6)<input name="senha" type="password" autocomplete="new-password" minlength="6" required></label><label>Repita a senha<input name="senha2" type="password" autocomplete="new-password" required></label><button class="authgo">Criar senha e entrar</button></form>
+      <form data-af="ped" hidden><p class="authhint">Para quem não está na lista. O coordenador da unidade libera o acesso.</p><label>Nome completo<input name="nome" autocomplete="name" required></label><label>E-mail<input name="email" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="seu@email.com" required></label><label>Celular (WhatsApp)<input name="cel" type="tel" inputmode="tel" autocomplete="tel" placeholder="(11) 90000-0000"></label><label>CRM<input name="crm" inputmode="numeric"></label>
+        <fieldset><legend>Unidades onde trabalha</legend>${AUTH_HS.map(([id, n]) => `<label class="authck"><input type="checkbox" name="h" value="${id}" ${id === hosp ? 'checked' : ''}> ${esc2(n)}</label>`).join('')}</fieldset>
+        <label>Crie uma senha (mínimo 6)<input name="senha" type="password" autocomplete="new-password" minlength="6" required></label><label>Repita a senha<input name="senha2" type="password" autocomplete="new-password" required></label><button class="authgo">Pedir acesso</button></form>
+      <p class="authmsg" role="status"></p>
+      <p class="authlgpd">Os dados dos pacientes são protegidos pela LGPD. O acesso é pessoal: não compartilhe sua senha. Cada entrada fica registrada.</p></div>`;
+    document.body.appendChild(ov); document.body.classList.add('authlock');
+    const msg = (t, ok) => { const m = ov.querySelector('.authmsg'); m.textContent = t || ''; m.classList.toggle('ok', !!ok); };
+    ov.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { ov.querySelectorAll('[data-tab]').forEach(x => x.setAttribute('aria-selected', x === b)); ov.querySelectorAll('form').forEach(f => f.hidden = f.dataset.af !== b.dataset.tab); msg(''); });
+    const done = r => {
+      const a = { t: r.token, n: r.nome, h: r.hosps || [], exp: r.exp }; Auth.set(a);
+      if (!Auth.can(hosp)) {
+        if (a.h.length) { msg(`Seu acesso é para ${a.h.map(h => (AUTH_HS.find(x => x[0] === h) || [, h])[1]).join(', ')}. Abrindo…`, true); setTimeout(() => { location.href = location.pathname + '?h=' + a.h[0] + '&v=' + Date.now(); }, 1200); }
+        else msg('Seu cadastro ainda não tem unidade liberada. Fale com o coordenador.');
+        return;
+      }
+      ov.remove(); document.body.classList.remove('authlock'); resolve(a);
+    };
+    let padrao = null;
+    ov.querySelectorAll('form').forEach(f => f.onsubmit = async e => {
+      e.preventDefault(); const v = Object.fromEntries(new FormData(f)); const btn = f.querySelector('.authgo');
+      if (v.senha2 != null && v.senha !== v.senha2) { msg('As senhas não são iguais.'); return; }
+      btn.disabled = true; msg('Conferindo…', true);
+      const body = f.dataset.af === 'nova' ? { op: 'primeiro', email: padrao.email, padrao: padrao.senha, senha: v.senha } : f.dataset.af === 'in' ? { op: 'login', email: v.email, senha: v.senha } : f.dataset.af === 'pri' ? { op: 'primeiro', email: v.email, crm: v.crm, senha: v.senha }
+        : { op: 'pedido', email: v.email, cel: v.cel, nome: v.nome, crm: v.crm, senha: v.senha, hosps: [...f.querySelectorAll('[name=h]:checked')].map(x => x.value) };
+      const r = await authApi(body); btn.disabled = false;
+      if (r.ok && r.token) { done(r); return; }
+      if (r.erro === 'trocar') { padrao = { email: v.email, senha: v.senha }; ov.querySelectorAll('form').forEach(x => x.hidden = x.dataset.af !== 'nova'); ov.querySelector('.authtabs').hidden = true; msg(''); ov.querySelector('form[data-af=nova] input').focus(); return; }
+      if (r.ok && r.pendente) { msg('Pedido enviado. Assim que o coordenador liberar, entre com seu e-mail e a senha que você criou.', true); return; }
+      msg(AUTH_MSG[r.erro] || ('Não foi possível entrar (' + (r.erro || 'erro') + ').'));
+    });
+    setTimeout(() => ov.querySelector('input')?.focus(), 50);
+  });
+}
+/* nome de quem está logado + botão Sair na barra de navegação */
+function authBar() {
+  const a = Auth.get(), nav = document.getElementById('sitenav'); if (!nav || !a) return;
+  let el = document.getElementById('authBar'); if (!el) { el = document.createElement('span'); el.id = 'authBar'; nav.appendChild(el); }
+  el.innerHTML = ''; const b = document.createElement('a'); b.href = '#'; b.textContent = 'Sair (' + String(a.n || '').split(' ')[0] + ')';
+  b.onclick = e => { e.preventDefault(); if (confirm('Sair do app neste aparelho? Os dados de pacientes guardados aqui serão apagados.')) { Auth.out(); location.reload(); } };
+  el.appendChild(b);
+}
+/* sessão vence (12h): pede login de novo */
+function authExpired(hosp) { try { localStorage.removeItem(AUTH_K); } catch (e) {} authGate(hosp).then(() => location.reload()); }
+setInterval(() => { if (!window.claude && !Auth.get() && !document.querySelector('.authov') && typeof H !== 'undefined') authExpired(H.id); }, 300000);
+
 const CFG_KEY = nsKey('hps-planilha');
 const b64e = t => btoa(unescape(encodeURIComponent(t))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const b64d = t => decodeURIComponent(escape(atob(t.replace(/-/g, '+').replace(/_/g, '/'))));
-function loadCfg() { try { const c = JSON.parse(localStorage.getItem(CFG_KEY) || 'null'); return c && c.u && c.c ? c : null; } catch (e) { return null; } }
+/* a lista compartilhada só abre com login (celular + senha) */
+function loadCfg() { const a = Auth.get(); return a && Auth.can(H.id) ? { u: SHEET_URL, c: a.t } : null; }
 function saveCfg(c) { try { c ? localStorage.setItem(CFG_KEY, JSON.stringify(c)) : localStorage.removeItem(CFG_KEY); } catch (e) {} }
 const SHEET_URL = 'https://script.google.com/macros/s/AKfycbxkGguEX2yO0-5BY8Fkt8XiumbxyW7xmHRL9-Bqr2X1UxhlPirm34OSDXAn4FSCNvD7mQ/exec';
 function readInvite() {
@@ -1116,11 +1213,12 @@ function makeSheet(url, code) {
     const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), get ? 25000 : 45000);
     let j;
     try {
+      const tk = /^tk\./.test(code); if (tk) get = false; // com login, tudo vai por POST (nada pessoal no endereço)
       const r = get ? await fetch(url + '?' + new URLSearchParams({ ...body, code }), { signal: ctl.signal, cache: 'no-store' })
-        : await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, code }), signal: ctl.signal });
+        : await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, code, hosp: H.id }), signal: ctl.signal });
       j = await r.json();
     } finally { clearTimeout(tm); }
-    if (!j.ok) { const e = new Error(j.erro || 'erro'); e.code = j.erro === 'codigo' ? 'codigo' : 'unavailable'; throw e; }
+    if (!j.ok) { const e = new Error(j.erro || 'erro'); e.code = j.erro === 'codigo' ? 'codigo' : (j.erro === 'sessao' || j.erro === 'login' || j.erro === 'hosp') ? 'sessao' : 'unavailable'; if (e.code === 'sessao' && !document.querySelector('.authov')) authExpired(H.id); throw e; }
     return j;
   };
   const merge = (a, b) => { const o = { ...a }; for (const [k, v] of Object.entries(b)) o[k] = v && typeof v === 'object' && !Array.isArray(v) && a[k] && typeof a[k] === 'object' ? merge(a[k], v) : v; return o; };
@@ -2083,7 +2181,7 @@ function offerMigration() {
 
 /* ======================= lista compartilhada ======================= */
 function renderShared() {
-  if (window.claude) return;
+  if (window.claude || true) { const sb = $('shared'); if (sb) sb.hidden = true; return; } // com login, não há mais link/código de equipe
   const c = loadCfg(), box = $('shared'); box.hidden = false;
   $('shTitle').textContent = c ? 'Lista compartilhada: conectada' : 'Lista da equipe: digite o código de acesso';
   $('shState').textContent = c ? 'ver link da equipe' : 'configurar';
@@ -2159,6 +2257,8 @@ function applyHosp() {
 $('hospSel').addEventListener('change', e => { setHosp(e.target.value); location.href = 'bate-censo.html?h=' + e.target.value + '&v=' + Date.now(); });
 async function start() {
   readInvite(); applyHosp();
+  if (!window.claude && !Auth.can(H.id)) await authGate(H.id);
+  if (!window.claude) { authBar(); const a = Auth.get(); if (a && a.n && a.n !== 'Coordenação') { S.me = a.n; } }
   let db = null, user = null;
   if (window.claude) { try { [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]); } catch (e) {} }
   if (db) {
