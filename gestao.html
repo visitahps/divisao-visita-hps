@@ -112,7 +112,6 @@ waKUawdfrbty+MKeQGumv03sOqIN0F29o6P0Xjq5IDnJYrADRc85eNevbONw1/YSyMhbEwFsbCWBgLY2
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 /* Layout: cabeçalho igual ao app, controles numa linha, indicadores em blocos, comparação entre hospitais, gráfico de saídas e listas de cobrança */
 :root{
@@ -254,12 +253,6 @@ details.tv summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--mut
 .more{margin-top:8px}
 .grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
 @media (max-width:980px){.grid2{grid-template-columns:1fr}}
-.accp{border:1px solid var(--pm);background:var(--pm-soft);border-radius:10px;padding:8px 10px;margin:6px 0;display:grid;gap:6px;font-size:13.5px}
-.accp .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.accadd{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}.accadd input{padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit;font-size:13.5px;min-width:0;flex:1 1 140px}
-.hck{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:12.5px;background:var(--card)}
-.st-ativo{color:var(--ok)}.st-pre{color:var(--brand)}.st-pendente{color:var(--pm)}.st-bloqueado{color:var(--long)}
-#accTbl td,#accTbl th{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;font-size:13px;white-space:nowrap}#accTbl button{font-size:12px;padding:2px 8px}
 .ulinks{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;margin-top:8px}
 .ulinks .u{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--paper);display:flex;justify-content:space-between;align-items:center;gap:8px}
 .ulinks .u b{font-size:14px}.ulinks .u span{display:flex;gap:6px}
@@ -736,26 +729,6 @@ dSAmiECD0Adivpo5aHfvbi1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span cl
     <div class="chips" id="hospChips" style="margin-top:10px"></div>
   </section>
 
-  <section class="panel" id="accPanel" hidden>
-    <h2>Acessos ao app <small id="accSub"></small></h2>
-    <p class="lead">Cada médico entra com e-mail e senha (LGPD). Quem está na lista entra a primeira vez com o e-mail e a <b>senha padrão 123456789</b>, e o app obriga a criar uma senha pessoal. Quem não está pede acesso e aparece aqui para liberar.</p>
-    <div id="accPend"></div>
-    <details class="tv" id="accImp"><summary>Importar lista de médicos (Pega Plantão: Excel ou CSV)</summary>
-      <p class="hint">A lista precisa ter nome e e-mail (o celular fica guardado para o botão de WhatsApp; o CRM ajuda a conferir quem é). Se tiver coluna de unidade/hospital, uso ela; senão, vale a unidade marcada abaixo.</p>
-      <div class="chips" id="accImpH"></div>
-      <div class="row" style="margin-top:8px"><label class="btn sm" style="cursor:pointer">Escolher arquivo<input type="file" id="accFile" accept=".xlsx,.xls,.csv" hidden></label><button class="btn sm primary" id="accImpGo" hidden>Importar</button></div>
-      <div id="accPrev"></div><p class="status" id="accImpSt"></p>
-    </details>
-    <details class="tv"><summary>Adicionar um médico</summary>
-      <div class="accadd"><input id="accNome" placeholder="Nome"><input id="accEmail" type="email" placeholder="E-mail" autocapitalize="off"><input id="accCel" placeholder="Celular (opcional)" inputmode="tel"><input id="accCrm" placeholder="CRM" inputmode="numeric"><span class="chips" id="accAddH"></span><button class="btn sm primary" id="accAdd">Adicionar</button></div>
-      <p class="hint">O médico entra com o e-mail e a senha padrão (123456789) e cria a senha pessoal.</p><p class="status" id="accAddSt"></p>
-    </details>
-    <details class="tv" id="accAll"><summary id="accAllSum">Médicos cadastrados</summary>
-      <input type="search" id="accQ" placeholder="Buscar nome, e-mail, celular ou CRM" style="margin:6px 0;width:100%;max-width:320px">
-      <div class="tbl"><table id="accTbl"></table></div>
-    </details>
-  </section>
-
   <section class="panel" id="unitsPanel" hidden>
     <h2>Abrir uma unidade <small>divisão e bate censo de cada hospital, neste aparelho</small></h2>
     <div class="ulinks" id="unitLinks"></div>
@@ -884,13 +857,13 @@ async function connect(code) {
   if (Array.isArray(j.hosps) && j.hosps.length) { HIDS = Object.keys(HOSPS).filter(h => j.hosps.includes(h)); if (HIDS.length === 1) S.hosp = HIDS[0]; }
   document.querySelector('header.top .sub').textContent = HIDS.length === Object.keys(HOSPS).length ? 'Enfermarias · giro de leitos, altas e permanência' : HIDS.map(h => HOSPS[h].nome).join(' · ');
   API = api; try { localStorage.setItem(CFGK, code); } catch (e) {}
-  linkUnits(); loadUsers();
+  linkUnits();
 }
 /* conecta neste aparelho a divisão e o bate censo de todos os hospitais */
 async function linkUnits() {
   try {
     const j = await API({ op: 'codigos' }, true);
-    if (j.token) { let cur = null; try { cur = JSON.parse(localStorage.getItem('hps-login') || 'null'); } catch (e) {} if (!cur || cur.exp < Date.now() || cur.n === 'Coordenação') localStorage.setItem('hps-login', JSON.stringify({ t: j.token, n: 'Coordenação', h: Object.keys(j.codigos || {}), exp: j.exp })); }
+    const hs = Object.keys(j.codigos || {}); if (hs.length) { let cur = null; try { cur = JSON.parse(localStorage.getItem('hps-login') || 'null'); } catch (e) {} if (!cur || cur.exp < Date.now() || cur.n === 'Coordenação') localStorage.setItem('hps-login', JSON.stringify({ t: 'gestor', n: 'Coordenação', h: hs, exp: Date.now() + 12 * 36e5 })); }
     for (const [h, c] of Object.entries(j.codigos || {})) { if (!HOSPS[h]) continue; S.tcodes = S.tcodes || {}; S.tcodes[h] = c; localStorage.setItem(h === 'hps' ? 'hps-planilha' : 'hps-planilha-' + h, JSON.stringify({ u: SHEET_URL, c })); }
   } catch (e) {}
   const here = HIDS.filter(h => { try { return !!localStorage.getItem(h === 'hps' ? 'hps-planilha' : 'hps-planilha-' + h); } catch (e) { return false; } });
@@ -1287,7 +1260,7 @@ const waNum = c => { let d = String(c || '').replace(/\D/g, ''); if (d && d.leng
 function cobrarHref(h, nome, beds, cel) {
   const base = location.origin + location.pathname.replace(/[^/]*$/, ''), c = (S.tcodes || {})[h];
   const first = String(nome).replace(/^(dr|dra|doutor|doutora)\.?\s+/i, '').split(' ')[0];
-  const t = `Olá, ${first}! Lembrete do bate censo de hoje (${HOSPS[h].curto}): ${beds.length === 1 ? 'falta atualizar o leito' : 'faltam atualizar os leitos'} ${beds.join(', ')}. Quando puder, atualize HD, previsão de alta e o que falta: ${base}bate-censo.html?h=${h} Obrigado!`;
+  const t = `Olá, ${first}! Lembrete do bate censo de hoje (${HOSPS[h].curto}): ${beds.length === 1 ? 'falta atualizar o leito' : 'faltam atualizar os leitos'} ${beds.join(', ')}. Quando puder, atualize HD, previsão de alta e o que falta: ${base}bate-censo.html${c ? '#' + c : '?h=' + h} Obrigado!`;
   return 'https://wa.me/' + waNum(cel) + '?text=' + encodeURIComponent(t);
 }
 function renderNaoAt(hs) {
@@ -1303,97 +1276,6 @@ function renderNaoAt(hs) {
     return `<div class="na">${hdr} · <b>${r.tot - r.n} de ${r.tot} atualizados</b> · faltam ${r.n}<ul>${r.docs.map(([d, bs, cel]) => `<li><b>${esc(d)}</b> (${bs.length}): ${bs.map(esc).join(', ')}${d === 'Sem médico na divisão' ? '' : ` <a class="wa" target="_blank" rel="noopener" href="${esc(cobrarHref(r.h, d, bs, cel))}">${cel ? 'Cobrar no WhatsApp' : 'Enviar no WhatsApp'}</a>`}</li>`).join('')}</ul></div>`;
   }).join('');
 }
-
-/* ======================= acessos (login dos médicos) ======================= */
-const HRE = { hps: /PAULO SACRAMENTO|SACRAMENTO|\bHPS\b/, hjan: /ANALIA|ANÁLIA/, hcru: /CRUZEIRO/, hbos: /BOSQUE/, hros: /ROSARIO|ROSÁRIO/ };
-const fmtCelG = d => { d = String(d || '').replace(/\D/g, ''); return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d.length === 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : d; };
-const ST_TXT = { ativo: 'Ativo', pre: 'Aguardando 1º acesso', pendente: 'Pediu acesso', bloqueado: 'Bloqueado' };
-const hChips = (id, sel) => HIDS.map(h => `<label class="hck"><input type="checkbox" data-hk="${id}" value="${h}" ${sel.includes(h) ? 'checked' : ''}> ${esc(HOSPS[h].curto)}</label>`).join(' ');
-const hSel = id => [...document.querySelectorAll(`[data-hk="${id}"]:checked`)].map(x => x.value);
-async function loadUsers() {
-  try { const j = await API({ op: 'usuarios' }, true); S.users = j.usuarios || []; renderAcc(); }
-  catch (e) { if (e.code === 'op') return; S.users = null; }
-}
-function renderAcc() {
-  if (!S.users) return; $('accPanel').hidden = false;
-  const us = S.users, pend = us.filter(u => u.status === 'pendente');
-  $('accSub').textContent = `· ${us.filter(u => u.status === 'ativo').length} ativo(s) · ${us.filter(u => u.status === 'pre').length} aguardando 1º acesso${pend.length ? ` · ${pend.length} pedido(s) para liberar` : ''}`;
-  $('accPend').innerHTML = pend.map(u => `<div class="accp" data-em="${esc(u.email)}"><div><b>${esc(u.nome)}</b> · ${esc(u.email)}${u.cel ? ' · ' + esc(fmtCelG(u.cel)) : ''}${u.crm ? ' · CRM ' + esc(u.crm) : ' · <b>sem CRM</b>'} pediu acesso</div>
-    <div class="row">${hChips('p' + u.email, u.hosps.filter(h => HIDS.includes(h)))}<button class="btn sm primary" data-acc="liberar">Liberar</button><button class="btn sm" data-acc="recusar">Recusar</button></div></div>`).join('');
-  if (!$('accImpH').innerHTML) $('accImpH').innerHTML = hChips('imp', HIDS.length === 1 ? HIDS : []);
-  if (!$('accAddH').innerHTML) $('accAddH').innerHTML = hChips('add', HIDS.length === 1 ? HIDS : []);
-  const q = L_norm($('accQ').value || ''), rows = us.filter(u => !q || L_norm(u.nome + ' ' + u.email + ' ' + u.cel + ' ' + u.crm).includes(q)).sort((a, b) => a.nome.localeCompare(b.nome, 'pt'));
-  $('accAllSum').textContent = `Médicos cadastrados (${us.length})`;
-  $('accTbl').innerHTML = `<thead><tr><th>Nome</th><th>E-mail</th><th>Celular</th><th>CRM</th><th>Unidades</th><th>Situação</th><th>Último acesso</th><th></th></tr></thead><tbody>${rows.map(u => `<tr data-em="${esc(u.email)}"><td>${esc(u.nome)}</td><td>${esc(u.email)}</td><td>${esc(fmtCelG(u.cel) || '—')}</td><td>${esc(u.crm || '—')}</td><td>${S.accEdit === u.email ? `${hChips('e' + u.email, u.hosps)} <button class="btn sm primary" data-acc="unid">Salvar</button>` : `${esc(u.hosps.map(h => HOSPS[h] ? HOSPS[h].curto : h).join(', ') || '—')} <button class="btn sm" data-acc="editu">alterar</button>`}</td><td class="st-${esc(u.status)}">${esc(ST_TXT[u.status] || u.status)}</td><td>${u.ultimo ? new Date(u.ultimo).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
-    <td>${u.status === 'bloqueado' ? '<button class="btn sm" data-acc="desbloquear">Desbloquear</button>' : '<button class="btn sm" data-acc="bloquear">Bloquear</button>'} ${u.status === 'ativo' ? '<button class="btn sm" data-acc="resetar" title="O médico cria uma senha nova pelo Primeiro acesso">Redefinir senha</button>' : ''}</td></tr>`).join('')}</tbody>`;
-}
-const L_norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
-async function saveUser(u, msgEl) {
-  try { await API({ op: 'salvarUsuario', u }); await loadUsers(); toast('Acesso atualizado.'); } catch (e) { toast('Não consegui salvar: ' + (e.code || e.message)); }
-}
-$('accPanel').addEventListener('click', async e => {
-  const b = e.target.closest('[data-acc]'); if (!b) return;
-  const box = b.closest('[data-em]'), email = box && box.dataset.em, act = b.dataset.acc;
-  if (act === 'liberar') { const hs = hSel('p' + email); if (!hs.length) { toast('Marque ao menos uma unidade.'); return; } saveUser({ email, status: 'ativo', hosps: hs }); }
-  else if (act === 'recusar') { if (confirm('Recusar este pedido de acesso?')) saveUser({ email, status: 'bloqueado' }); }
-  else if (act === 'bloquear') { if (confirm('Bloquear o acesso deste médico? Ele sai do app na próxima vez que abrir.')) saveUser({ email, status: 'bloqueado' }); }
-  else if (act === 'desbloquear') saveUser({ email, status: 'desbloquear' });
-  else if (act === 'editu') { S.accEdit = email; renderAcc(); }
-  else if (act === 'unid') { const hs = hSel('e' + email); S.accEdit = null; saveUser({ email, hosps: hs }); }
-  else if (act === 'resetar') { if (confirm('Redefinir a senha? A senha dele volta a ser a padrão (123456789) e ele cria uma nova no próximo acesso.')) saveUser({ email, status: 'resetar' }); }
-});
-$('accQ').addEventListener('input', renderAcc);
-$('accAdd').addEventListener('click', async () => {
-  const u = { nome: $('accNome').value.trim(), email: mailG($('accEmail').value), cel: $('accCel').value, crm: $('accCrm').value, hosps: hSel('add') };
-  if (!u.nome || !u.email || !u.hosps.length) { setStatus('accAddSt', 'Preencha nome, e-mail válido e ao menos uma unidade.', true); return; }
-  try { const j = await API({ op: 'importarUsuarios', lista: [u] }); setStatus('accAddSt', j.novos ? 'Médico adicionado. Ele já pode entrar com o e-mail e a senha padrão.' : 'E-mail já cadastrado: dados e unidades atualizados.'); $('accNome').value = $('accEmail').value = $('accCel').value = $('accCrm').value = ''; loadUsers(); }
-  catch (e) { setStatus('accAddSt', 'Não consegui salvar: ' + (e.code || e.message), true); }
-});
-/* lista do Pega Plantão (ou qualquer planilha com nome, e-mail, celular, CRM e unidade) */
-const mailG = x => { const e = String(x || '').trim().toLowerCase().replace(/\s+/g, ''); return /^[^@]+@[^@]+\.[a-z]{2,}$/.test(e) ? e : ''; };
-function parseLista(rows) {
-  const hi = rows.findIndex(r => r && r.some(c => /NOME|MEDICO|PROFISSIONAL/.test(L_norm(c))) && r.some(c => /E-?MAIL/.test(L_norm(c))));
-  if (hi < 0) return { erro: 'Não achei as colunas de nome e e-mail na planilha.' };
-  const h = rows[hi].map(L_norm), ix = re => h.findIndex(c => re.test(c));
-  const iN = ix(/^NOME|MEDICO|PROFISSIONAL/), iE = ix(/E-?MAIL/), iC = ix(/CEL|TELEFONE|FONE|WHATS|CONTATO/), iR = ix(/CRM|^REG|REGISTRO|CONSELHO/), iU = ix(/UNIDADE|HOSPITAL|LOCAL|SETOR|ESTABELEC|EMPRESA/);
-  const def = hSel('imp'), map = new Map(), fora = []; let semCel = 0, semCrm = 0, semH = 0;
-  for (const r of rows.slice(hi + 1)) {
-    if (!r) continue; const nome = String(r[iN] ?? '').trim(); if (!nome) continue;
-    const email = mailG(r[iE]); if (!email) { semCel++; fora.push(nome); continue; }
-    let cel = iC >= 0 ? String(r[iC] ?? '').replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '') : ''; if (cel.length < 10 || cel.length > 11) cel = '';
-    const crm = iR >= 0 ? String(r[iR] ?? '').replace(/\D/g, '') : '';
-    let hs = iU >= 0 ? Object.keys(HRE).filter(k => HRE[k].test(L_norm(r[iU]))) : [];
-    if (!hs.length) hs = def; hs = hs.filter(x => HIDS.includes(x));
-    const o = map.get(email) || { email, cel, nome, crm, hosps: [] }; if (crm && !o.crm) o.crm = crm; if (cel && !o.cel) o.cel = cel; hs.forEach(x => { if (!o.hosps.includes(x)) o.hosps.push(x); }); map.set(email, o);
-  }
-  const lista = [...map.values()]; lista.forEach(o => { if (!o.crm) semCrm++; if (!o.hosps.length) semH++; });
-  return { lista, semCel, semCrm, semH, fora, temUnid: iU >= 0 };
-}
-$('accFile').addEventListener('change', async e => {
-  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  try {
-    let rows; if (/\.csv$/i.test(f.name)) rows = (await f.text()).split(/\r?\n/).map(l => l.split(/;|\t|,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(c => c.replace(/^"|"$/g, '')));
-    else { const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: false }); }
-    S.accFile = rows; showPrev();
-  } catch (err) { setStatus('accImpSt', 'Não consegui ler ' + f.name, true); }
-});
-$('accImpH').addEventListener('change', () => { if (S.accFile) showPrev(); });
-function showPrev() {
-  const r = parseLista(S.accFile); S.accImp = r;
-  if (r.erro) { $('accPrev').innerHTML = ''; $('accImpGo').hidden = true; setStatus('accImpSt', r.erro, true); return; }
-  $('accPrev').innerHTML = `<p class="hint"><b>${r.lista.length} médico(s)</b> com e-mail${r.semCel ? ` · ${r.semCel} sem e-mail (fica de fora)` : ''}${r.semCrm ? ` · ${r.semCrm} sem CRM (vão precisar pedir acesso)` : ''}${r.semH ? ` · <b>${r.semH} sem unidade: marque a unidade acima</b>` : ''}${r.temUnid ? '' : ' · a lista não tem coluna de unidade: vale a unidade marcada acima'}</p>
-    <div class="tbl"><table id="accPrevT"><tr><th>Nome</th><th>E-mail</th><th>Celular</th><th>CRM</th><th>Unidades</th></tr>${r.lista.slice(0, 12).map(o => `<tr><td>${esc(o.nome)}</td><td>${esc(o.email)}</td><td>${esc(fmtCelG(o.cel) || '—')}</td><td>${esc(o.crm || '—')}</td><td>${esc(o.hosps.map(h => HOSPS[h].curto).join(', ') || '—')}</td></tr>`).join('')}</table></div>${r.lista.length > 12 ? `<p class="hint">e mais ${r.lista.length - 12}…</p>` : ''}${r.fora.length ? `<p class="hint"><b>Sem e-mail válido (adicione à mão em "Adicionar um médico"):</b> ${esc(r.fora.join(', '))}</p>` : ''}`;
-  $('accImpGo').hidden = !r.lista.some(o => o.hosps.length); setStatus('accImpSt', '');
-}
-$('accImpGo').addEventListener('click', async () => {
-  const lista = (S.accImp?.lista || []).filter(o => o.hosps.length); if (!lista.length) return;
-  $('accImpGo').disabled = true; setStatus('accImpSt', 'Importando…');
-  try { let nv = 0, at = 0; for (let i = 0; i < lista.length; i += 80) { const j = await API({ op: 'importarUsuarios', lista: lista.slice(i, i + 80) }); nv += j.novos; at += j.atualizados; }
-    setStatus('accImpSt', `Pronto: ${nv} novo(s), ${at} atualizado(s). Eles já podem entrar com o e-mail e a senha padrão 123456789 (o app pede para criar uma senha pessoal).`); S.accFile = null; $('accPrev').innerHTML = ''; $('accImpGo').hidden = true; loadUsers(); }
-  catch (e) { setStatus('accImpSt', 'Não consegui importar: ' + (e.code || e.message), true); }
-  $('accImpGo').disabled = false;
-});
-
 /* ======================= Day clinic ======================= */
 function dcEntries(hs) {
   const p = period(), out = [];
