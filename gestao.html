@@ -220,6 +220,12 @@ td .bad{color:var(--long);font-weight:800}td .good{color:var(--ok);font-weight:8
 .tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--paper);font-size:12.5px;padding:6px 9px;border-radius:7px;white-space:nowrap;transform:translate(-50%,-110%);z-index:3}
 .tip b{display:block}
 details.tv{margin-top:8px}
+.cad{border-top:1px solid var(--line);padding-top:8px;margin-top:12px}.cad summary{font-size:14px!important;color:var(--brand)!important}
+.cadf{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.cadf input{flex:1 1 180px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--card);color:var(--ink)}
+.cadck{display:inline-flex;gap:5px;align-items:center;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:13px;font-weight:600;cursor:pointer;background:var(--paper)}
+.cadok{margin-top:10px;border:1px solid var(--line);border-left:4px solid var(--ok,#1F7A4A);border-radius:8px;padding:8px 10px;background:var(--paper);font-size:13.5px}
+.cadok .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.cadok a.btn{text-decoration:none;display:inline-block}
+.cadl{margin-top:10px;font-size:13px}.cadl li{margin:3px 0}.cadl a{margin-left:6px}
 details.tv summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--muted)}
 /* listas */
 .lst{display:grid;gap:8px;margin-top:10px}
@@ -732,6 +738,14 @@ dSAmiECD0Adivpo5aHfvbi1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span cl
   <section class="panel" id="unitsPanel" hidden>
     <h2>Abrir uma unidade <small>divisão e bate censo de cada hospital, neste aparelho</small></h2>
     <div class="ulinks" id="unitLinks"></div>
+    <details class="tv cad" id="cadMed" hidden><summary>➕ Cadastrar médico que não está na lista</summary>
+      <p class="hint">Para quem não tem celular no Pega Plantão ou entrou agora na escala. O app gera um <b>link pessoal</b>: o médico abre esse link uma vez no celular dele e, a partir daí, entra com o <b>celular e a senha 123456789</b>. Não precisa mexer na planilha.</p>
+      <div class="cadf"><input id="cadNome" placeholder="Nome do médico" autocomplete="off"><input id="cadCel" placeholder="Celular com DDD" inputmode="tel" autocomplete="off"></div>
+      <div class="chips" id="cadH" style="margin-top:6px"></div>
+      <div class="row" style="margin-top:8px"><button class="btn primary" id="cadGo">Gerar acesso</button></div>
+      <div id="cadOut"></div><p class="status" id="cadSt"></p>
+      <div id="cadList"></div>
+    </details>
   </section>
 
   <section class="tiles" id="tiles" aria-label="Indicadores"></section>
@@ -870,7 +884,49 @@ async function linkUnits() {
   if (!here.length) return;
   $('unitLinks').innerHTML = here.map(h => `<div class="u"><b>${esc(HOSPS[h].curto)}</b><span><a href="divisao.html?h=${h}">Divisão</a><a href="bate-censo.html?h=${h}">Bate censo</a></span></div>`).join('');
   $('unitsPanel').hidden = false;
+  if (S.tcodes && Object.keys(S.tcodes).length) { $('cadMed').hidden = false; if (!$('cadH').innerHTML) $('cadH').innerHTML = Object.keys(S.tcodes).map(h => `<label class="cadck"><input type="checkbox" value="${h}" ${Object.keys(S.tcodes).length === 1 ? 'checked' : ''}> ${esc(HOSPS[h].curto)}</label>`).join(''); cadList(); }
 }
+
+/* ======================= cadastro de médico fora da lista (link pessoal de acesso) =======================
+   O registro vai cifrado com celular + senha padrão (o mesmo formato da lista que fica dentro do app). Quem abre o link
+   guarda o acesso no próprio aparelho; sem o celular e a senha, o link não abre nada. */
+const CAD_SENHA = '123456789', CAD_IT = 60000, CAD_K = 'hps-cadastros';
+const cadCel = x => { let d = String(x || '').replace(/\D/g, '').replace(/^0+/, ''); if (d.length >= 12 && d.startsWith('55')) d = d.slice(2); if (d.length === 10 && /[6-9]/.test(d[2])) d = d.slice(0, 2) + '9' + d.slice(2); return d.length === 11 ? d : ''; };
+const cadB64 = b => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const cadHex = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+async function cadRecord(nome, cel, hs) {
+  const te = new TextEncoder(), s = cadHex(crypto.getRandomValues(new Uint8Array(8))), ix = cadHex(await crypto.subtle.digest('SHA-256', te.encode(s + '|' + cel))).slice(0, 16);
+  const base = await crypto.subtle.importKey('raw', te.encode(cel + '|' + CAD_SENHA), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: te.encode(s + ix), iterations: CAD_IT, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, te.encode(JSON.stringify({ n: nome, h: hs, c: Object.fromEntries(hs.map(h => [h, S.tcodes[h]])) })));
+  return s + '.' + ix + '.' + cadB64(iv) + '.' + cadB64(ct);
+}
+const cadLink = (rec, h) => location.origin + location.pathname.replace(/[^/]*$/, '') + 'bate-censo.html?h=' + h + '#a=' + rec;
+const cadMsg = (nome, link) => `Olá, ${nome.split(' ')[0]}! Este é o seu acesso ao censo das enfermarias.\n\n1) Abra este link no seu celular (só na primeira vez):\n${link}\n\n2) Entre com o seu celular e a senha 123456789.\n\nDepois é só abrir o app normalmente. O acesso é pessoal: não repasse este link.`;
+const cadWa = (cel, txt) => 'https://wa.me/55' + cel + '?text=' + encodeURIComponent(txt);
+function cadGet() { try { return JSON.parse(localStorage.getItem(CAD_K) || '[]'); } catch (e) { return []; } }
+function cadList() {
+  const l = cadGet(); if (!l.length) { $('cadList').innerHTML = ''; return; }
+  $('cadList').innerHTML = `<div class="cadl"><b>Gerados neste aparelho</b><ul>${l.slice().reverse().map((x, i) => `<li>${esc(x.nome)} · ${esc(x.cel.replace(/^(\d{2})(\d{5})(\d{4})$/, '($1) $2-$3'))} · ${esc(x.hs.map(h => HOSPS[h] ? HOSPS[h].curto : h).join(', '))}<a href="${esc(cadWa(x.cel, cadMsg(x.nome, x.link)))}" target="_blank" rel="noopener">reenviar</a><a href="#" data-cadrm="${l.length - 1 - i}">apagar</a></li>`).join('')}</ul></div>`;
+}
+$('cadGo').addEventListener('click', async () => {
+  const nome = $('cadNome').value.trim().replace(/\s+/g, ' '), cel = cadCel($('cadCel').value), hs = [...document.querySelectorAll('#cadH input:checked')].map(x => x.value).filter(h => S.tcodes && S.tcodes[h]);
+  if (nome.split(' ').length < 2) { setStatus('cadSt', 'Digite o nome e o sobrenome do médico.', true); return; }
+  if (!cel) { setStatus('cadSt', 'Digite o celular com DDD (11 dígitos).', true); return; }
+  if (!hs.length) { setStatus('cadSt', 'Marque ao menos uma unidade.', true); return; }
+  if (!window.crypto || !crypto.subtle) { setStatus('cadSt', 'Este navegador não consegue gerar o acesso. Use o Chrome ou o Safari atualizados.', true); return; }
+  $('cadGo').disabled = true; setStatus('cadSt', 'Gerando…');
+  try {
+    const rec = await cadRecord(nome, cel, hs), link = cadLink(rec, hs[0]), msg = cadMsg(nome, link);
+    const l = cadGet().filter(x => x.cel !== cel); l.push({ nome, cel, hs, link, em: new Date().toISOString() }); try { localStorage.setItem(CAD_K, JSON.stringify(l.slice(-60))); } catch (e) {}
+    $('cadOut').innerHTML = `<div class="cadok">✅ Acesso de <b>${esc(nome)}</b> pronto (${esc(hs.map(h => HOSPS[h].curto).join(', '))}). Mande o link para ele:<div class="row"><a class="btn primary" href="${esc(cadWa(cel, msg))}" target="_blank" rel="noopener">Enviar no WhatsApp dele</a><button class="btn" id="cadCopy">Copiar mensagem</button></div></div>`;
+    $('cadCopy').onclick = async () => { try { await navigator.clipboard.writeText(msg); toast('Mensagem copiada.'); } catch (e) { prompt('Copie a mensagem:', msg); } };
+    $('cadNome').value = $('cadCel').value = ''; setStatus('cadSt', ''); cadList();
+  } catch (e) { setStatus('cadSt', 'Não consegui gerar o acesso: ' + (e.message || e), true); }
+  $('cadGo').disabled = false;
+});
+$('cadList').addEventListener('click', e => { const a = e.target.closest('[data-cadrm]'); if (!a) return; e.preventDefault(); const l = cadGet(); l.splice(+a.dataset.cadrm, 1); try { localStorage.setItem(CAD_K, JSON.stringify(l)); } catch (x) {} cadList(); });
 
 /* ======================= estado ======================= */
 const S = {
