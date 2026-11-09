@@ -1283,13 +1283,20 @@ function makeSheet(url, code) {
     async refresh() { if (pending.length) await flush(); await idle(); await poll(true); },
     pendingCount: () => pending.length + inflight.length,
     async putMany(key, items, progress) {
-      for (let i = 0; i < items.length; i += 25) {
-        const chunk = items.slice(i, i + 25);
-        await call({ op: 'put', day: key, items: chunk });
-        if (key === dayKey) chunk.forEach(x => cache.set(x.id, x.isNew ? x.body : merge(cache.get(x.id) || {}, x.body)));
-        progress && progress(Math.min(i + 25, items.length), items.length);
+      // em lotes pequenos, com até 4 tentativas por lote: se a internet ou a planilha falhar no meio, não perde o resto
+      const N = 15; let falhou = 0, ultimoErro = null;
+      for (let i = 0; i < items.length; i += N) {
+        const chunk = items.slice(i, i + N); let feito = false;
+        for (let t = 0; t < 4 && !feito; t++) {
+          try { await call({ op: 'put', day: key, items: chunk }); feito = true; }
+          catch (e) { ultimoErro = e; if (e?.code === 'invalid_argument') throw e; await new Promise(r => setTimeout(r, 1500 * (t + 1))); }
+        }
+        if (feito) { if (key === dayKey) chunk.forEach(x => cache.set(x.id, x.isNew ? x.body : merge(cache.get(x.id) || {}, x.body))); }
+        else falhou += chunk.length;
+        progress && progress(Math.min(i + N, items.length), items.length);
       }
       ok();
+      if (falhou) { const e = new Error(`${falhou} de ${items.length} pacientes não foram salvos (${ultimoErro?.message || 'falha de conexão'}). Toque em Montar de novo: quem já foi salvo não se perde.`); e.parcial = falhou; throw e; }
     }
   };
 }
@@ -1456,17 +1463,21 @@ async function buildDay() {
     jobs.push({ id, body: isNew ? { ...BLANK, c } : { c, presente: true }, isNew });
     n++;
   });
-  for (const [id, p] of existing) if (!seen.has(id) && !String(id).startsWith('dc-') && p.presente !== false) jobs.push({ id, body: { presente: false }, isNew: false });
+  // só marca como "saiu do censo" quem é de um posto cujo censo veio nesta carga (atualizar só o 4A não tira o 6º andar)
+  const carregados = new Set(UNITS.filter(u => S.census[u]?.patients?.length));
+  for (const [id, p] of existing) if (!seen.has(id) && !String(id).startsWith('dc-') && p.presente !== false && (!p.c?.unit || carregados.has(p.c.unit))) jobs.push({ id, body: { presente: false }, isNew: false });
+  const nTot = n + [...existing].filter(([id, p]) => !seen.has(id) && !String(id).startsWith('dc-') && p.presente !== false && p.c?.unit && !carregados.has(p.c.unit)).length;
+  let errMsg = null;
   try {
-    await S.store.putDay(key, { date: D.br(day), censoEm: new Date().toISOString(), total: n, kanban: S.kanbanName || '', units: Object.fromEntries(UNITS.map(u => [u, S.census[u]?.patients.length || 0])) });
+    await S.store.putDay(key, { date: D.br(day), censoEm: new Date().toISOString(), total: nTot, kanban: S.kanbanName || '', units: Object.fromEntries(UNITS.map(u => [u, S.census[u]?.patients.length || 0])) });
     if (S.store.putMany) await S.store.putMany(key, jobs, (k, t) => setStatus('buildStatus', `Salvando… ${k} de ${t}`));
     else { let i = 0; const workers = Array.from({ length: 4 }, async () => { while (i < jobs.length) { const j = jobs[i++]; await S.store.putPatient(key, j.id, j.body, j.isNew); setStatus('buildStatus', `Salvando… ${Math.min(i, jobs.length)} de ${jobs.length}`); } }); await Promise.all(workers); }
     setStatus('buildStatus', `Pronto: ${n} pacientes de ${D.br(day)}${div.rows.length ? ` · divisão encontrada para ${divHits}` : ''}.`);
     openDay(key); $('load').open = false;
   } catch (e) {
-    const msg = e?.code === 'quota_exceeded' ? 'A base da página está cheia. Apague dias antigos para continuar.' : e?.code === 'invalid_argument' ? 'Esta conta só pode ver o bate censo, não preencher.' : 'Não consegui salvar: ' + (e?.message || e);
-    setStatus('buildStatus', msg, true);
-  } finally { renderFiles(); }
+    errMsg = e?.code === 'quota_exceeded' ? 'A base da página está cheia. Apague dias antigos para continuar.' : e?.code === 'invalid_argument' ? 'Esta conta só pode ver o bate censo, não preencher.' : 'Não consegui salvar: ' + (e?.message || e);
+    if (e?.parcial) openDay(key);
+  } finally { renderFiles(); if (errMsg) { $('load').open = true; setStatus('buildStatus', errMsg, true); try { alert(errMsg); } catch (x) {} } }
 }
 
 /* ======================= bate censo só com a divisão (sem o PDF do censo) =======================
@@ -1483,6 +1494,7 @@ async function buildFromDiv() {
   const div = divOnly(); if (!div) { setStatus('buildStatus', 'Cole o texto da divisão do dia (com a data no título) ou carregue o censo em PDF.', true); return; }
   const day = D.parse(div.date), key = D.key(day);
   $('build').disabled = true; setStatus('buildStatus', 'Montando com a divisão…');
+  let errMsg = null;
   try {
     const existing = key === S.day ? S.pats : await S.store.readDay(key);
     // dia anterior mais recente já montado: para manter cadastro, dias e o que foi preenchido
@@ -1521,8 +1533,9 @@ async function buildFromDiv() {
     setStatus('buildStatus', `Pronto: ${n} pacientes de ${D.br(day)} montados pela divisão (${carried} já estavam no bate censo${prevKey && prevKey !== key ? ' de ' + D.short(prevKey) : ''}, ${novos} novos). Quando tiver o PDF do censo, carregue para completar convênio e dias de internação.`);
     openDay(key); $('load').open = false;
   } catch (e) {
-    setStatus('buildStatus', e?.code === 'invalid_argument' ? 'Esta conta só pode ver o bate censo, não preencher.' : 'Não consegui salvar: ' + (e?.message || e), true);
-  } finally { renderFiles(); }
+    errMsg = e?.code === 'invalid_argument' ? 'Esta conta só pode ver o bate censo, não preencher.' : 'Não consegui salvar: ' + (e?.message || e);
+    if (e?.parcial) openDay(key);
+  } finally { renderFiles(); if (errMsg) { $('load').open = true; setStatus('buildStatus', errMsg, true); try { alert(errMsg); } catch (x) {} } }
 }
 
 /* ======================= dia aberto ======================= */
