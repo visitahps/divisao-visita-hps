@@ -226,6 +226,18 @@ textarea.divtxt{width:100%;border:1px solid var(--line);border-radius:8px;paddin
 .sug{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12.5px;background:var(--pm-soft);color:var(--ink);border-radius:6px;padding:4px 8px}
 .sug button{border:1px solid var(--pm);background:var(--card);color:var(--pm);border-radius:6px;font-size:12px;font-weight:800;padding:2px 8px;cursor:pointer}
 details.kb summary{cursor:pointer;font-size:12.5px;color:var(--muted);font-weight:700}
+details.mem{margin:2px 0 8px;border:1px dashed var(--line);border-radius:10px;padding:6px 8px;background:var(--paper)}
+details.mem[open]{border-style:solid}
+details.mem summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--ink)}
+.abtag{display:inline-block;border-radius:999px;padding:1px 8px;font-size:11.5px;font-weight:800;margin-left:2px}
+.abtag.none{background:var(--line);color:var(--muted)}.abtag.nao{background:var(--line);color:var(--ink)}
+.abtag.baixa{background:#FFF4D6;color:#8A5A00}.abtag.media{background:#FFE4D2;color:#B2440F}.abtag.alta{background:#FAD4D2;color:#A61B12}
+.abwrap{margin:8px 0 4px}.abg{margin:0 0 6px}.abt{font-size:12px;font-weight:800;color:var(--muted);margin-bottom:3px}.abt small{font-weight:600}
+.abg .mots button b{opacity:.75;margin-left:2px}.abh{font-size:11px;color:var(--muted);margin:2px 0 0;line-height:1.35}
+.abres{font-size:13px;margin:6px 0 2px;padding:6px 8px;border-radius:8px;background:var(--brand-soft)}.abp{font-size:11.5px;margin:2px 0 6px}
+.tag.cc{background:#FAD4D2;color:#A61B12}
+.pt.cc{box-shadow:inset 3px 0 0 #C0271E}
+.tile.cc .v{color:#A61B12}
 details.kb dl{margin:6px 0 0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 10px;font-size:12.5px}
 details.kb dt{color:var(--muted);font-weight:700}
 details.kb dd{margin:0;overflow-wrap:anywhere;white-space:pre-line}
@@ -1356,7 +1368,9 @@ const FILTERS = [
   ['long', H.vs ? 'RP com mais de 3 dias' : 'Mais de 3 dias', p => present(p) && lng(p)],
   ['altas', 'Altas do dia', isAlta],
   ['saiu', 'Saíram do censo', saiu],
-  ['excl', 'Excluídos', p => !!p.excluido]
+  ['excl', 'Excluídos', p => !!p.excluido],
+  ['cc', 'Crônicos complexos (ABEMID ≥ 8)', p => present(p) && isCC(p)],
+  ['semab', 'Sem ABEMID', p => present(p) && !(p.mem && p.mem.ab)]
 ];
 const fOf = k => FILTERS.find(f => f[0] === k)[2];
 
@@ -1437,7 +1451,7 @@ async function buildDay() {
   // pacientes que entraram só pela divisão (sem PDF): o censo completa o mesmo cadastro, sem duplicar
   const prevKeyC = S.days.map(d => d.id).filter(k => k < key).sort().pop();
   const prevC = prevKeyC ? await S.store.readDay(prevKeyC).catch(() => new Map()) : new Map();
-  const viaDiv = [...existing].filter(([id, x]) => x.c && x.c.semCenso).concat([...prevC].filter(([id]) => String(id).startsWith('div-')));
+  const viaDiv = [...existing].filter(([id, x]) => x.c).concat([...prevC].filter(([id]) => String(id).startsWith('div-')));
   const usedDiv = new Set();
   const divId = p => { const nn = L.norm(p.name), n2 = nn.split(' ').slice(0, 2).join(' ');
     const h = viaDiv.find(([id, x]) => !usedDiv.has(id) && String(x.c.room) === String(p.room) && (() => { const a = L.norm(x.c.name), a2 = a.split(' ').slice(0, 2).join(' '); return a.startsWith(n2) || nn.startsWith(a2); })());
@@ -1558,7 +1572,7 @@ function openDay(key) {
   unsubDay = S.store.watchDay(key, m => onPatients(m), e => setSync('err', 'Conexão perdida. Recarregue a página.'));
   const prevKey = S.days.map(d => d.id).filter(k => k < key).sort().reverse()[0] || '';
   S.yestKey = prevKey; S.yest = new Map(); S.dcY = new Map();
-  if (prevKey) S.store.readDay(prevKey).then(m0 => { if (S.day !== key) return; const m = new Map(), dc = new Map(); for (const [k, v] of m0) (String(k).startsWith('dc-') ? dc : m).set(k, v); S.yest = m; S.dcY = dc; renderDC(); S.yestLoaded = key; renderTiles(); renderChips(); renderList(true); rescue(); carry(); }).catch(() => {});
+  if (prevKey) S.store.readDay(prevKey).then(m0 => { if (S.day !== key) return; const m = new Map(), dc = new Map(); for (const [k, v] of m0) (String(k).startsWith('dc-') ? dc : m).set(k, v); S.yest = m; S.dcY = dc; renderDC(); S.yestLoaded = key; renderTiles(); renderChips(); renderList(true); rescue(); carry(); carryMem(); }).catch(() => {});
 }
 /* quem ficou com a tela do dia anterior aberta preencheu lá: traz para o dia atual o que foi feito hoje */
 /* traz do dia anterior HD, o que falta, motivos e pendências não resolvidas, para o médico só conferir */
@@ -1973,6 +1987,7 @@ function renderTiles() {
     t('24h', 'h24', 'Alta em 24h', s.h24, 'previsão para amanhã'),
     t('sem', '', 'Sem previsão', s.sem, 'motivo anotado no cartão'),
     t('pend', 'pm', 'Pendências abertas', s.pend, `${s.pdia} do dia anotada(s) · ${s.pdiaRes} resolvida(s)`),
+    (() => { const ps = [...S.pats.values()].filter(present), cc = ps.filter(isCC), sem = ps.filter(p => !(p.mem && p.mem.ab)); return t('cc', 'cc', 'Crônicos complexos', cc.length, `ABEMID ≥ ${AB_CORTE} · ${sem.length} sem avaliação`); })(),
     t('altas', 'ok', 'Altas do dia', s.altas, `${H.vs ? `RP ${s.altasRp} · VS ${s.altas - s.altasRp}` : 'efetivadas hoje'}${s.obitos + s.utis + s.outras ? ` · óbito ${s.obitos} · UTI ${s.utis} · outra unid. ${s.outras}` : ''}`)
   ].join('');
 }
@@ -2011,14 +2026,15 @@ function renderList(full) {
 }
 function card(id, p) {
   const c = p.c || {}, ro = !S.canWrite;
-  const cls = ['pt', p.excluido ? 'excl' : '', naoAt(p) ? 'naoat' : '', lng(p) ? 'long' : d4(p) ? 'd4' : '', present(p) ? '' : 'gone', isAlta(p) ? 'done-alta' : p.desfecho ? 'done-out' : ''].join(' ');
+  const cls = ['pt', isCC(p) ? 'cc' : '', p.excluido ? 'excl' : '', naoAt(p) ? 'naoat' : '', lng(p) ? 'long' : d4(p) ? 'd4' : '', present(p) ? '' : 'gone', isAlta(p) ? 'done-alta' : p.desfecho ? 'done-out' : ''].join(' ');
   const daysCls = lng(p) ? 'long' : d4(p) ? 'd4' : '';
   const y = S.yest.get(id);
   const yTxt = y && (y.prev || y.falta) ? `<div class="yest ${dueYest(id) && !isAlta(p) ? 'due' : ''}">${dueYest(id) && !isAlta(p) ? '⏰ <b>Alta prevista para hoje.</b> ' : ''}<b>Bate censo de ${D.short(S.yestKey)}:</b> ${esc(PREV[y.prev] || 'sem marcação')}${y.falta ? ' · ' + esc(y.falta) : ''}${y.resolvido ? ' · resolvido' : ''}</div>` : '';
   const sug = c.sug && !p.prev ? `<div class="sug"><span>Kanban sugere <b>${esc(PREV[c.sug])}</b> · ${esc(c.sugTxt)}</span>${ro ? '' : `<button data-act="sug" data-v="${c.sug}">Usar</button>`}</div>` : '';
   const kb = [['Equipe', c.spec], ['Diagnóstico', c.diag], ['Plano', c.plano], ['Alta (kanban)', c.altaKb], ['Exames e procedimentos', c.exames], ['Pendência multi', c.multi], ['Longa permanência', c.longa], ['Observações', c.obs],
     ['Internação', c.intern], ['Previsão do sistema', c.prevSis], ['Prescreveu ontem', c.prescriber], ['Procedimento', c.proc]].filter(([, v]) => v && !/^(N\/?A|NEGA|S\/?P)$/i.test(String(v).trim()));
-  const meta = [`${H.vs ? `<span class="tag ${c.team === 'RP' ? 'rp' : 'vs'}">${c.team}</span> ` : ''}${esc(c.conv)}`, c.idade ? c.idade + ' anos' : '', c.spec ? esc(c.spec) : (c.noKanban && H.kanban ? 'fora do kanban' : ''), S.group !== 'medico' && c.visitador ? 'Visita: ' + esc(c.visitador) : ''].filter(Boolean).join(' · ');
+  const abr = abOf(p);
+  const meta = [`${H.vs ? `<span class="tag ${c.team === 'RP' ? 'rp' : 'vs'}">${c.team}</span> ` : ''}${isCC(p) ? `<span class="tag cc" title="ABEMID ${abr.tot} · ${AB_CLS[abr.cls]}">Crônico complexo · ${abr.tot}</span> ` : ''}${esc(c.conv)}`, c.idade ? c.idade + ' anos' : '', c.spec ? esc(c.spec) : (c.noKanban && H.kanban ? 'fora do kanban' : ''), S.group !== 'medico' && c.visitador ? 'Visita: ' + esc(c.visitador) : ''].filter(Boolean).join(' · ');
   const upd = [p.desfecho && p.desfechoEm ? (p.desfecho === 'alta' ? 'alta' : DESF[p.desfecho].toLowerCase()) + ' às ' + D.hm(p.desfechoEm) : '', p.resolvido && p.resolvidoEm ? 'resolvido às ' + D.hm(p.resolvidoEm) : '', p.atualizado ? 'atualizado às ' + D.hm(p.atualizado) : ''].filter(Boolean)[0] || '';
   const updBy = upd && p.por ? `${upd} · ${esc(p.por)}` : upd;
   return `<article class="${cls}" data-id="${esc(id)}">
@@ -2030,6 +2046,7 @@ function card(id, p) {
     ${yTxt}${sug}
     ${kb.length ? `<details class="kb"><summary>${H.kanban ? 'Kanban e censo' : 'Dados do censo'}</summary><dl>${kb.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl></details>` : ''}
     <fieldset class="ro" ${ro ? 'disabled' : ''}>
+      ${present(p) || p.mem ? memBlock(id, p, ro) : ''}
       ${mustJust(id, p) ? `<div class="falta naosaiu ${justTxt(p) ? '' : 'need'}"><label for="n-${esc(id)}">Por que não saiu? <small>· alta prevista em ${esc(D.short(S.yestKey))} para hoje</small></label><div class="motivos">${MOTIVOS.map(m => `<button data-act="motivo" data-v="${esc(m)}" aria-pressed="${String(p.naosaiu || '').includes(m)}">${esc(m)}</button>`).join('')}</div><textarea id="n-${esc(id)}" data-act="naosaiu" rows="2" placeholder="Justifique: o que impediu a alta hoje e qual o novo plano">${esc(p.naosaiu || '')}</textarea></div>` : ''}
       <div class="falta hdf"><label for="h-${esc(id)}">HD · hipótese diagnóstica${carryLbl(id, p, 'hd')}</label><textarea id="h-${esc(id)}" data-act="hd" rows="1" placeholder="${esc(c.diag ? 'Kanban: ' + String(c.diag).replace(/\n/g, ' ').slice(0, 90) : 'Ex.: Pneumonia comunitária, ICC descompensada')}">${esc(p.hd || '')}</textarea></div>
       <div class="prev" role="group" aria-label="Previsão de alta">${Object.entries(PREV).map(([v, lab]) => `<button data-act="prev" data-v="${v}" aria-pressed="${v === 'efetivada' ? isAlta(p) : p.prev === v && !p.desfecho}">${lab}</button>`).join('')}</div>
@@ -2038,6 +2055,77 @@ function card(id, p) {
       <div class="foot"><button class="tog" data-act="res" aria-pressed="${!!p.resolvido}">Pendência resolvida</button><select class="desf ${['obito', 'uti', 'outra'].includes(p.desfecho) ? 'on' : ''}" data-act="desf" aria-label="Outro desfecho"><option value="">Outro desfecho…</option>${['obito', 'uti', 'outra'].map(v => `<option value="${v}" ${p.desfecho === v ? 'selected' : ''}>${v === 'obito' ? 'Óbito' : v === 'uti' ? 'Transf. UTI' : 'Transf. outra unidade'}</option>`).join('')}</select><button class="tog" data-act="dd" aria-pressed="${!!p.dd}">DD/DHD</button>${p.excluido ? '' : '<button class="tog" data-act="excl" title="Ex.: paciente da pediatria ou que não é da clínica médica">Excluir</button>'}<span class="upd">${updBy}</span></div>
     </fieldset>
   </article>`;
+}
+
+
+/* ======================= ABEMID e memória do paciente =======================
+   Tabela de Avaliação de Complexidade Assistencial (ABEMID). Suporte terapêutico: os itens se SOMAM.
+   Demais grupos: vale só o item de MAIOR pontuação (um por grupo). ≤7 não elegível · 8–12 baixa · 13–18 média · ≥19 alta.
+   Um item com 5 pontos: no mínimo média. Dois ou mais itens com 5: alta, independente do total.
+   A memória (mem) vai junto com o paciente todos os dias, mesmo com censo novo. */
+const ABEMID = [
+  { k: 'st', t: 'Suporte terapêutico', soma: true, op: [['svp', 'Sonda vesical permanente', 1], ['svi', 'Sonda vesical intermitente', 2], ['tqt', 'Traqueostomia sem aspiração', 2], ['tqa', 'Traqueostomia com aspiração', 5], ['asp', 'Aspiração de vias aéreas sup.', 3], ['avpc', 'Acesso venoso profundo contínuo', 5], ['avi', 'Acesso venoso intermitente', 4], ['avper', 'Acesso venoso periférico contínuo', 5], ['dial', 'Diálise domiciliar', 5]] },
+  { k: 'qt', t: 'Quimioterapia', op: [['vo', 'Oral', 1], ['sc', 'Subcutânea', 3], ['iv', 'Intravenosa', 5], ['it', 'Intratecal', 5]] },
+  { k: 'vent', t: 'Suporte ventilatório', op: [['o2i', 'O₂ intermitente', 2], ['o2c', 'O₂ contínuo', 3], ['vmi', 'Ventilação mecânica intermitente', 4], ['vmc', 'Ventilação mecânica contínua', 5]] },
+  { k: 'les', t: 'Lesão vascular/cutânea', op: [['g1', 'Úlcera de pressão grau I', 2], ['g2', 'Grau II', 3], ['g3', 'Grau III', 4], ['g4', 'Grau IV', 5]] },
+  { k: 'avd', t: 'Atividade da vida diária (cuidados técnicos)', op: [['ind', 'Independente', 0], ['semi', 'Semidependente', 2], ['dep', 'Dependente total', 5]],
+    ajuda: 'Semidependente: 2 ou mais de — só sai do leito com ajuda, confusão mental, medicação EV intermitente, curativo especializado diário. Dependente total: prótese ventilatória com 3+ intervenções/dia; inconsciente ou restrito ao leito com sonda vesical, TQT, acesso venoso ou diálise; medicação EV contínua; artrodese de coluna por instabilidade grave há menos de 60 dias.' },
+  { k: 'reab', t: 'Reabilitação diária (fisio, fono…)', op: [['ind', 'Independente', 0], ['dep', 'Dependente', 2]] },
+  { k: 'nut', t: 'Terapia nutricional', op: [['sup', 'Suplementação oral', 1], ['gtt', 'Gastrostomia', 2], ['sne', 'SNE', 3], ['jej', 'Jejunoileostomia', 3], ['npt', 'Nutrição parenteral total', 5]] }
+];
+const AB_CLS = { nao: 'Não elegível', baixa: 'Baixa complexidade', media: 'Média complexidade', alta: 'Alta complexidade' };
+const AB_CORTE = 8; // a partir de 8 pontos: crônico complexo (elegível para internação domiciliar)
+const abCalc = ab => {
+  if (!ab) return null;
+  let tot = 0, n5 = 0;
+  for (const g of ABEMID) {
+    const sel = g.soma ? (ab[g.k] || []) : (ab[g.k] ? [ab[g.k]] : []);
+    for (const v of sel) { const o = g.op.find(x => x[0] === v); if (o) { tot += o[2]; if (o[2] === 5) n5++; } }
+  }
+  let cls = tot >= 19 ? 'alta' : tot >= 13 ? 'media' : tot >= AB_CORTE ? 'baixa' : 'nao';
+  if (n5 >= 2) cls = 'alta'; else if (n5 === 1 && (cls === 'nao' || cls === 'baixa')) cls = 'media';
+  return { tot, n5, cls };
+};
+const abOf = p => abCalc(p?.mem?.ab);
+const isCC = p => { const a = abOf(p); return !!a && (a.tot >= AB_CORTE || a.cls !== 'nao'); };
+const PLANO_CC = ['PGC', 'DD/DHD', 'Paliativo', 'CASE', 'O₂ domiciliar'];
+const MEM_TXT = [['com', 'Comorbidades', 'Ex.: DM2, HAS, DRC dialítica, sequela de AVC'], ['cuid', 'Cuidador e rede de apoio', 'Ex.: filha cuidadora, mora com esposa, sem cuidador'], ['hist', 'História e internações anteriores', 'Ex.: 3ª internação no ano por PNM aspirativa; GTT desde 2025']];
+function memBlock(id, p, ro) {
+  const m = p.mem || {}, ab = m.ab || {}, r = abCalc(m.ab);
+  const open = S.memOpen && S.memOpen.has(id) ? 'open' : '';
+  const sum = r ? `<span class="abtag ${r.cls}">ABEMID ${r.tot} · ${AB_CLS[r.cls]}</span>` : `<span class="abtag none">ABEMID não avaliado</span>`;
+  const de = p.memDe && p.memDe !== S.day ? ` <small class="muted">· história trazida desde ${esc(D.short(p.memDe))}</small>` : '';
+  const grupos = ABEMID.map(g => `<div class="abg"><div class="abt">${esc(g.t)}${g.soma ? ' <small>(soma os itens)</small>' : ''}</div><div class="mots">${g.op.map(([v, lab, pts]) => {
+      const on = g.soma ? (ab[g.k] || []).includes(v) : ab[g.k] === v;
+      return `<button data-act="ab" data-abg="${g.k}" data-abv="${v}" aria-pressed="${on}">${esc(lab)} <b>${pts}</b></button>`; }).join('')}</div>${g.ajuda ? `<p class="abh">${esc(g.ajuda)}</p>` : ''}</div>`).join('');
+  const por = m.abEm ? `<p class="muted abp">Avaliada em ${esc(D.short(D.key(new Date(m.abEm))))}${m.abPor ? ' por ' + esc(m.abPor) : ''}. Se nada mudou, não precisa refazer.</p>` : '';
+  return `<details class="mem" data-mem="${esc(id)}" ${open}><summary>História do paciente · ${sum}${de}</summary>
+    <div class="abwrap">${grupos}<div class="abres">${r ? `Total <b>${r.tot}</b> pontos · <b>${AB_CLS[r.cls]}</b>${r.n5 ? ` · ${r.n5} item(ns) com 5` : ''}${isCC(p) ? ' · <b>crônico complexo</b>' : ''}` : 'Toque nos itens que o paciente tem. Sem nenhum item = 0 pontos.'}${!ro && m.ab ? ' <button class="link" data-act="abzero">limpar</button>' : ''}${!ro && !m.ab ? ' <button class="link" data-act="abnada">Paciente sem nenhum item (0)</button>' : ''}</div>${por}</div>
+    ${MEM_TXT.map(([k, lab, ph]) => `<div class="falta"><label for="m${k}-${esc(id)}">${lab}</label><textarea id="m${k}-${esc(id)}" data-act="mem:${k}" rows="1" placeholder="${esc(ph)}">${esc(m[k] || '')}</textarea></div>`).join('')}
+    <div class="falta"><label>Plano de cuidado</label><div class="mots">${PLANO_CC.map(x => `<button data-act="memplano" data-v="${esc(x)}" aria-pressed="${(m.plano || []).includes(x)}">${esc(x)}</button>`).join('')}</div></div>
+  </details>`;
+}
+/* memória: quem ainda não tem, busca a mesma pessoa nos dias anteriores (mesmo atendimento ou mesmo nome), até 10 dias */
+const memNm = s => L.norm(s || '').split(' ').filter(w => w && !/^(DE|DA|DO|DOS|DAS|E)$/.test(w));
+const memSame = (a, b) => { const x = memNm(a), y = memNm(b); if (x.length < 2 || y.length < 2 || x[0] !== y[0] || x[1] !== y[1]) return false; if (x.length < 3 || y.length < 3) return x.length === y.length; const u = x[2], v = y[2]; return u.length >= 3 && v.length >= 3 && (u.startsWith(v) || v.startsWith(u)); };
+async function carryMem() {
+  if (!S.canWrite || S.yestLoaded !== S.day || S.memDone === S.day || S.day !== S.days[0]?.id) return;
+  S.memDone = S.day;
+  const need = [...S.pats].filter(([id, p]) => p.c && present(p) && !p.mem);
+  if (!need.length) return;
+  const keys = S.days.map(d => d.id).filter(k => k < S.day).sort().reverse().slice(0, 10);
+  let got = 0;
+  for (const k of keys) {
+    if (!need.length || S.memDone !== S.day) break;
+    const m = k === S.yestKey ? S.yest : await S.store.readDay(k).catch(() => null); if (!m) continue;
+    const comMem = [...m].filter(([, y]) => y.mem && y.c);
+    for (let i = need.length - 1; i >= 0; i--) {
+      const [id, p] = need[i]; const y0 = m.get(id); const y = y0 && y0.mem ? y0 : (comMem.find(([, y]) => memSame(y.c.name, p.c.name)) || [])[1];
+      if (!y) continue;
+      write(id, { mem: y.mem, memDe: y.memDe || k }, true); need.splice(i, 1); got++;
+    }
+  }
+  if (got) setStatus('outStatus', `História de ${got} paciente(s) trazida dos dias anteriores.`);
 }
 
 /* ======================= edição ======================= */
@@ -2067,6 +2155,14 @@ $('list').addEventListener('click', e => {
   if ((act === 'prev' && b.dataset.v === 'efetivada') || act === 'alta') write(id, isAlta(p) ? { prev: back(), desfecho: '', desfechoEm: '' } : { prev: 'efetivada', prevAntes: p.prev === 'efetivada' ? (p.prevAntes || '') : (p.prev || ''), desfecho: 'alta', desfechoEm: now });
   else if (act === 'prev' || act === 'sug') write(id, { prev: p.prev === b.dataset.v && act === 'prev' && !p.desfecho ? '' : b.dataset.v, ...(isAlta(p) ? { desfecho: '', desfechoEm: '' } : {}) });
   else if (act === 'kbcopy') write(id, { pend: L.openKb(p.c).join('\n') });
+  else if (act === 'ab' || act === 'abzero' || act === 'abnada') {
+    const m = p.mem || {}, ab = { ...(m.ab || {}) }, g = ABEMID.find(x => x.k === b.dataset.abg), v = b.dataset.abv;
+    if (act === 'ab') { if (g.soma) { const cur = ab[g.k] || []; ab[g.k] = cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v]; } else ab[g.k] = ab[g.k] === v ? '' : v; }
+    const nab = act === 'abzero' ? null : ab, r = abCalc(nab || {});
+    (S.memOpen = S.memOpen || new Set()).add(id);
+    write(id, { mem: { ...m, ab: nab, abTot: nab ? r.tot : null, abCls: nab ? r.cls : '', abEm: nab ? now : '', abPor: nab ? (S.me || '') : '' }, memDe: p.memDe || S.day });
+  }
+  else if (act === 'memplano') { const m = p.mem || {}, cur = m.plano || [], v = b.dataset.v; (S.memOpen = S.memOpen || new Set()).add(id); write(id, { mem: { ...m, plano: cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v] }, memDe: p.memDe || S.day }); }
   else if (act === 'mot') { const cur = p.mot || [], m = b.dataset.v; write(id, { mot: cur.includes(m) ? cur.filter(x => x !== m) : [...cur, m] }); }
   else if (act === 'motivo') { const ta = document.getElementById('n-' + id), cur = (ta ? ta.value : p.naosaiu || '').trim(), m = b.dataset.v; clearTimeout(S.timers.get(id + '|naosaiu')); const parts = cur ? cur.split(/\s*;\s*/) : []; write(id, { naosaiu: parts.includes(m) ? parts.filter(x => x !== m).join('; ') : (cur ? cur + '; ' + m : m) }); }
   else if (act === 'dd') write(id, { dd: !p.dd });
@@ -2080,6 +2176,7 @@ $('list').addEventListener('change', e => {
   const p = S.pats.get(id) || {}, back = p.prev === 'efetivada' ? { prev: p.prevAntes && p.prevAntes !== 'efetivada' ? p.prevAntes : '' } : {};
   write(id, v ? { desfecho: v, desfechoEm: new Date().toISOString(), ...back } : { desfecho: '', desfechoEm: '' });
 });
+document.addEventListener('toggle', e => { const d = e.target; if (!d.matches || !d.matches('details.mem')) return; S.memOpen = S.memOpen || new Set(); d.open ? S.memOpen.add(d.dataset.mem) : S.memOpen.delete(d.dataset.mem); }, true);
 $('list').addEventListener('input', e => {
   const ta = e.target.closest('textarea[data-act]'); if (!ta) return;
   const id = ta.closest('.pt').dataset.id, k = id + '|' + ta.dataset.act;
@@ -2090,7 +2187,7 @@ $('list').addEventListener('focusout', e => {
   const id = ta.closest('.pt').dataset.id; clearTimeout(S.timers.get(id + '|' + ta.dataset.act)); flush(id, ta.dataset.act, ta.value);
   setTimeout(() => { if (S.dirty.has(id)) { S.dirty.delete(id); const el = document.querySelector(`.pt[data-id="${CSS.escape(id)}"]`); if (el && !el.contains(document.activeElement)) el.outerHTML = card(id, S.pats.get(id)); } }, 50);
 });
-function flush(id, f, v) { const p = S.pats.get(id); if (p && (f === 'falta' || f === 'pend' || f === 'naosaiu' || f === 'hd') && (p[f] || '') !== v) write(id, { [f]: v }); }
+function flush(id, f, v) { const p = S.pats.get(id); if (!p) return; if (f.startsWith('mem:')) { const k = f.slice(4), m = p.mem || {}; if ((m[k] || '') !== v) write(id, { mem: { ...m, [k]: v }, memDe: p.memDe || S.day }); return; } if ((f === 'falta' || f === 'pend' || f === 'naosaiu' || f === 'hd') && (p[f] || '') !== v) write(id, { [f]: v }); }
 
 /* filtros */
 document.addEventListener('click', e => {
