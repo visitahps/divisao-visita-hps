@@ -237,6 +237,8 @@ details.mem summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--
 .abres{font-size:13px;margin:6px 0 2px;padding:6px 8px;border-radius:8px;background:var(--brand-soft)}.abp{font-size:11.5px;margin:2px 0 6px}
 .tag.cc{background:#FAD4D2;color:#A61B12}
 .abq{margin:0 0 8px;padding:7px 8px;border-radius:10px;background:#FFF7EC;border:1px solid #F3D9B5}
+.falta.campo>label{font-weight:800}.falta.tarde{background:#F3F6FD;border-radius:9px;padding:6px 8px;margin-left:-2px;margin-right:-2px}
+.cn{display:inline-grid;place-items:center;width:17px;height:17px;border-radius:50%;background:var(--brand);color:#fff;font-size:10.5px;font-weight:800;margin-right:3px;vertical-align:1px}
 .abq label{display:block;font-size:12.5px;font-weight:800;margin-bottom:2px}.abq .req{color:#A61B12;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
 .abq.need{border-color:#E8A0A0;background:#FFF3F2}
 .abq.alert{border-color:#E06A5F;background:#FFF0EE}
@@ -1344,7 +1346,7 @@ const present = p => p.presente !== false && !p.excluido;
 const saiu = p => p.presente === false && !p.excluido;
 const hasPend = p => !!String(p.pend || '').trim();
 const isAlta = p => p.desfecho === 'alta' || (p.prev === 'efetivada' && !p.desfecho);
-const openPend = p => present(p) && !p.resolvido && !isAlta(p) && !p.desfecho && (hasPend(p) || ((p.prev === 'tarde' || p.prev === '24h') && !!String(p.falta || '').trim()));
+const openPend = p => present(p) && !p.resolvido && !isAlta(p) && !p.desfecho && hasPend(p);
 L.openKb = c => [c.exames, c.multi].join('\n').split(/\n|\/\/|;/).map(x => x.trim()).filter(x => x.length > 3 && !/\bOK\b|^N\/?A\b|^NEGA|REALIZAD|^S\/?P$/i.test(x));
 /* ontem com previsão em 24h (ou hoje à tarde que não saiu): é alta prevista para hoje */
 const MOTF = ['Exame', 'Parecer', 'Procedimento', 'DD/DHD', 'Vaga/transferência', 'Autorização', 'Social/família', 'Clinicamente instável', 'ATB endovenoso'];
@@ -1607,7 +1609,7 @@ function carry() {
 function rescue() {
   if (S.rescueDone || !S.canWrite || S.yestLoaded !== S.day || !S.pats.size || S.day !== S.days[0]?.id) return;
   S.rescueDone = true;
-  const F = ['prev', 'falta', 'pend', 'desfecho', 'dd', 'naosaiu', 'hd', 'mot'], got = [];
+  const F = ['prev', 'falta', 'pend', 'altaT', 'desfecho', 'dd', 'naosaiu', 'hd', 'mot'], got = [];
   for (const [id, y] of S.yest) {
     const t = S.pats.get(id); if (!t || !present(t) || !y.atualizado) continue;
     if (D.key(new Date(y.atualizado)) < S.day || t.resg === y.atualizado) continue;
@@ -2064,8 +2066,10 @@ function card(id, p) {
       <div class="falta hdf"><label for="h-${esc(id)}">HD · hipótese diagnóstica${carryLbl(id, p, 'hd')}</label><textarea id="h-${esc(id)}" data-act="hd" rows="1" placeholder="${esc(c.diag ? 'Kanban: ' + String(c.diag).replace(/\n/g, ' ').slice(0, 90) : 'Ex.: Pneumonia comunitária, ICC descompensada')}">${esc(p.hd || '')}</textarea></div>
       ${abQuick(id, p, ro)}
       <div class="prev" role="group" aria-label="Previsão de alta">${Object.entries(PREV).map(([v, lab]) => `<button data-act="prev" data-v="${v}" aria-pressed="${v === 'efetivada' ? isAlta(p) : p.prev === v && !p.desfecho}">${lab}</button>`).join('')}</div>
-      <div class="falta"><label for="f-${esc(id)}">${FALTA_LBL[p.prev || '']}${carryLbl(id, p, 'falta')}</label>${p.prev === 'efetivada' || p.desfecho ? '' : `<div class="mots" role="group" aria-label="O que falta">${MOTF.map(m => `<button data-act="mot" data-v="${esc(m)}" aria-pressed="${(p.mot || []).includes(m)}">${esc(m)}</button>`).join('')}</div>`}<textarea id="f-${esc(id)}" data-act="falta" rows="2" placeholder="${p.prev === 'sem' ? 'Ex.: aguarda vaga de UTI, antibiótico até 12/10' : 'Ex.: resultado de eco, parecer da cirurgia, autorização'}">${esc(p.falta)}</textarea></div>
-      <div class="falta"><label for="p-${esc(id)}">Pendências do dia${carryLbl(id, p, 'pend')}</label><textarea id="p-${esc(id)}" data-act="pend" rows="2" placeholder="Ex.: coletar labs, RX tórax, parecer da uro, ligar para família">${esc(p.pend || '')}</textarea>${!ro && !hasPend(p) && L.openKb(c).length ? `<button class="kbcopy" data-act="kbcopy">Trazer pendências do kanban (${L.openKb(c).length})</button>` : ''}</div>
+      ${p.prev === 'efetivada' || p.desfecho ? '' : `<div class="falta"><label>${FALTA_LBL[p.prev || '']} <small class="muted">· toque</small></label><div class="mots" role="group" aria-label="O que falta">${MOTF.map(m => `<button data-act="mot" data-v="${esc(m)}" aria-pressed="${(p.mot || []).includes(m)}">${esc(m)}</button>`).join('')}</div></div>`}
+      <div class="falta campo"><label for="f-${esc(id)}"><span class="cn">1</span> Condutas de hoje <small class="muted">· o que você fez e decidiu na visita</small>${carryLbl(id, p, 'falta')}</label><textarea id="f-${esc(id)}" data-act="falta" rows="2" placeholder="${p.prev === 'sem' ? 'Ex.: mantenho ATB D5 de 10, aguardo vaga de UTI' : 'Ex.: ajusto diurético, solicito eco, oriento família'}">${esc(p.falta)}</textarea></div>
+      ${p.prev === 'efetivada' || p.desfecho ? '' : `<div class="falta campo tarde"><label for="a-${esc(id)}"><span class="cn">2</span> Possibilidade de alta à tarde <small class="muted">· só se puder sair hoje</small></label><textarea id="a-${esc(id)}" data-act="altaT" rows="1" placeholder="Ex.: alta se eco sem alterações; aguarda liberação da hemodinâmica">${esc(p.altaT || '')}</textarea></div>`}
+      <div class="falta campo tarde"><label for="p-${esc(id)}"><span class="cn">3</span> Pendências para resolver à tarde <small class="muted">· vai para o hospitalista da tarde</small>${carryLbl(id, p, 'pend')}</label><textarea id="p-${esc(id)}" data-act="pend" rows="2" placeholder="Só o que a tarde precisa resolver. Ex.: ver resultado da TC, falar com família às 15h">${esc(p.pend || '')}</textarea>${!ro && !hasPend(p) && L.openKb(c).length ? `<button class="kbcopy" data-act="kbcopy">Trazer pendências do kanban (${L.openKb(c).length})</button>` : ''}</div>
       <div class="foot"><button class="tog" data-act="res" aria-pressed="${!!p.resolvido}">Pendência resolvida</button><select class="desf ${['obito', 'uti', 'outra'].includes(p.desfecho) ? 'on' : ''}" data-act="desf" aria-label="Outro desfecho"><option value="">Outro desfecho…</option>${['obito', 'uti', 'outra'].map(v => `<option value="${v}" ${p.desfecho === v ? 'selected' : ''}>${v === 'obito' ? 'Óbito' : v === 'uti' ? 'Transf. UTI' : 'Transf. outra unidade'}</option>`).join('')}</select><button class="tog" data-act="dd" aria-pressed="${!!p.dd}">DD/DHD</button>${p.excluido ? '' : '<button class="tog" data-act="excl" title="Ex.: paciente da pediatria ou que não é da clínica médica">Excluir</button>'}<span class="upd">${updBy}</span></div>
     </fieldset>
   </article>`;
@@ -2231,7 +2235,7 @@ $('list').addEventListener('focusout', e => {
   const id = ta.closest('.pt').dataset.id; clearTimeout(S.timers.get(id + '|' + ta.dataset.act)); flush(id, ta.dataset.act, ta.value);
   setTimeout(() => { if (S.dirty.has(id)) { S.dirty.delete(id); const el = document.querySelector(`.pt[data-id="${CSS.escape(id)}"]`); if (el && !el.contains(document.activeElement)) el.outerHTML = card(id, S.pats.get(id)); } }, 50);
 });
-function flush(id, f, v) { const p = S.pats.get(id); if (!p) return; if (f.startsWith('mem:')) { const k = f.slice(4), m = p.mem || {}; if ((m[k] || '') !== v) write(id, { mem: { ...m, [k]: v }, memDe: p.memDe || S.day }); return; } if ((f === 'falta' || f === 'pend' || f === 'naosaiu' || f === 'hd') && (p[f] || '') !== v) write(id, { [f]: v }); }
+function flush(id, f, v) { const p = S.pats.get(id); if (!p) return; if (f.startsWith('mem:')) { const k = f.slice(4), m = p.mem || {}; if ((m[k] || '') !== v) write(id, { mem: { ...m, [k]: v }, memDe: p.memDe || S.day }); return; } if ((f === 'falta' || f === 'pend' || f === 'naosaiu' || f === 'hd' || f === 'altaT') && (p[f] || '') !== v) write(id, { [f]: v }); }
 
 /* filtros */
 document.addEventListener('click', e => {
@@ -2263,18 +2267,16 @@ function headTxt(title) {
   return [`*${title} — ${dd}*`, nv(`Internados: ${s.total} (RP ${s.rp} · VS ${s.vs}) · RP acima de 3 dias: ${s.long}`)];
 }
 function waTarde() {
-  const out = headTxt(`BATE CENSO ${H.curto.toUpperCase()} · PENDÊNCIAS DA TARDE`);
-  const sec = (t, ps) => { if (ps.length) out.push('', `*${t} (${ps.length})*`, ...ps.map(line)); };
-  const due = [...S.pats].filter(([id, p]) => p.c && present(p) && dueYest(id) && !isAlta(p) && !p.desfecho).map(([, p]) => p).sort(bedSort);
-  if (due.length) out.push('', `*Previstos em ${D.short(S.yestKey)} para hoje e ainda sem alta (${due.length})*`, ...due.map(jline));
-  const dueSet = new Set(due);
-  sec('Alta prevista hoje à tarde', sorted(p => p.prev === 'tarde' && !p.desfecho && !dueSet.has(p)));
-  sec('Alta em 24h', sorted(p => p.prev === '24h' && !p.desfecho));
-  sec('Alta efetivada', sorted(isAlta));
-  sec(H.vs ? 'RP acima de 3 dias sem previsão' : 'Acima de 3 dias sem previsão', sorted(p => present(p) && lng(p) && p.prev === 'sem'));
-  const pd = sorted(p => present(p) && hasPend(p));
-  if (pd.length) out.push('', `*Pendências do dia (${pd.length})*`, ...pd.map(pline));
-  naoAtTxt(out);
+  // só o que a tarde precisa: pendências abertas e possíveis altas
+  const dd = S.days.find(d => d.id === S.day)?.date || D.short(S.day);
+  const out = [`*BATE CENSO ${H.curto.toUpperCase()} · TARDE — ${dd}*`];
+  const ativo = p => present(p) && !isAlta(p) && !p.desfecho;
+  const cl = t => String(t || '').trim().replace(/\s*\n\s*/g, '; ');
+  const pd = sorted(p => ativo(p) && hasPend(p) && !p.resolvido);
+  out.push('', `*📌 Pendências para resolver à tarde (${pd.length})*`, ...(pd.length ? pd.map(p => `☐ ${p.c.bed} - ${L.norm(p.c.name)}: ${cl(p.pend)}`) : ['• nenhuma']));
+  const due = new Set([...S.pats].filter(([id]) => dueYest(id)).map(([, p]) => p));
+  const al = sorted(p => ativo(p) && (p.prev === 'tarde' || !!cl(p.altaT) || due.has(p)));
+  out.push('', `*🏠 Possíveis altas à tarde (${al.length})*`, ...(al.length ? al.map(p => `• ${p.c.bed} - ${L.norm(p.c.name)}${cl(p.altaT) ? ': ' + cl(p.altaT) : p.prev === 'tarde' ? ': alta prevista hoje à tarde' : ': previsto ontem para hoje'}`) : ['• nenhuma']));
   return out.join('\n');
 }
 function naoAtTxt(out) {
