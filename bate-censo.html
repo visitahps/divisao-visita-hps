@@ -236,6 +236,17 @@ details.mem summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--
 .abg .mots button b{opacity:.75;margin-left:2px}.abh{font-size:11px;color:var(--muted);margin:2px 0 0;line-height:1.35}
 .abres{font-size:13px;margin:6px 0 2px;padding:6px 8px;border-radius:8px;background:var(--brand-soft)}.abp{font-size:11.5px;margin:2px 0 6px}
 .tag.cc{background:#FAD4D2;color:#A61B12}
+.abq{margin:0 0 8px;padding:7px 8px;border-radius:10px;background:#FFF7EC;border:1px solid #F3D9B5}
+.abq label{display:block;font-size:12.5px;font-weight:800;margin-bottom:2px}.abq .req{color:#A61B12;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
+.abq.need{border-color:#E8A0A0;background:#FFF3F2}
+.abq.alert{border-color:#E06A5F;background:#FFF0EE}
+.abq-alert .btn{padding:5px 11px;font-size:12.5px;display:inline-block}
+.abq-alert{margin-top:6px;font-size:12.5px;line-height:1.4;color:#7A1710}.abq-alert b{color:#A61B12}.abq-alert .btn{margin-top:4px}
+.abq-t{font-size:12px;color:#8A5A00;margin-right:2px}.abq-h{display:inline;font-size:12px;color:var(--muted);margin:0}.abq .mots{margin:6px 0 0}
+.abq .mots button.kbs{border-style:dashed;border-color:#C27A00;color:#8A5A00}.abq .mots button.none{color:var(--muted)}
+.kbt{color:#8A5A00;font-weight:700}
+.abq-msg{font-size:12.5px;line-height:1.4}.abq-msg.prov b:first-child{color:#B2440F}.abq-msg.cc b:first-child{color:#A61B12}
+.abq-msg .link{font-weight:800}
 .pt.cc{box-shadow:inset 3px 0 0 #C0271E}
 .tile.cc .v{color:#A61B12}
 details.kb dl{margin:6px 0 0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 10px;font-size:12.5px}
@@ -1370,7 +1381,9 @@ const FILTERS = [
   ['saiu', 'Saíram do censo', saiu],
   ['excl', 'Excluídos', p => !!p.excluido],
   ['cc', 'Crônicos complexos (ABEMID ≥ 8)', p => present(p) && isCC(p)],
-  ['semab', 'Sem ABEMID', p => present(p) && !(p.mem && p.mem.ab)]
+  ['semab', 'ABEMID a preencher', p => abPend(p)],
+  ['semdisp', 'Dispositivos não informados', p => present(p) && !dispOk(p)],
+  ['inv', 'Invasivos sem ABEMID', p => present(p) && abPend(p) && invasivo(p)]
 ];
 const fOf = k => FILTERS.find(f => f[0] === k)[2];
 
@@ -1987,7 +2000,7 @@ function renderTiles() {
     t('24h', 'h24', 'Alta em 24h', s.h24, 'previsão para amanhã'),
     t('sem', '', 'Sem previsão', s.sem, 'motivo anotado no cartão'),
     t('pend', 'pm', 'Pendências abertas', s.pend, `${s.pdia} do dia anotada(s) · ${s.pdiaRes} resolvida(s)`),
-    (() => { const ps = [...S.pats.values()].filter(present), cc = ps.filter(isCC), sem = ps.filter(p => !(p.mem && p.mem.ab)); return t('cc', 'cc', 'Crônicos complexos', cc.length, `ABEMID ≥ ${AB_CORTE} · ${sem.length} sem avaliação`); })(),
+    (() => { const ps = [...S.pats.values()].filter(present), cc = ps.filter(isCC), sem = ps.filter(abPend), prov = ps.filter(p => p.mem && p.mem.abRapido && !isCC(p) && ABQ.some(q => abqOn(p.mem.ab || {}, q))); const inv = ps.filter(p => abPend(p) && invasivo(p)), nd = ps.filter(p => !dispOk(p)); return t(inv.length ? 'inv' : 'cc', inv.length ? 'cc flag' : 'cc', 'Crônicos complexos', cc.length, `ABEMID ≥ ${AB_CORTE}${inv.length ? ` · ⚠ ${inv.length} invasivo(s) sem ABEMID` : ''} · dispositivos não informados: ${nd.length}`); })(),
     t('altas', 'ok', 'Altas do dia', s.altas, `${H.vs ? `RP ${s.altasRp} · VS ${s.altas - s.altasRp}` : 'efetivadas hoje'}${s.obitos + s.utis + s.outras ? ` · óbito ${s.obitos} · UTI ${s.utis} · outra unid. ${s.outras}` : ''}`)
   ].join('');
 }
@@ -2049,6 +2062,7 @@ function card(id, p) {
       ${present(p) || p.mem ? memBlock(id, p, ro) : ''}
       ${mustJust(id, p) ? `<div class="falta naosaiu ${justTxt(p) ? '' : 'need'}"><label for="n-${esc(id)}">Por que não saiu? <small>· alta prevista em ${esc(D.short(S.yestKey))} para hoje</small></label><div class="motivos">${MOTIVOS.map(m => `<button data-act="motivo" data-v="${esc(m)}" aria-pressed="${String(p.naosaiu || '').includes(m)}">${esc(m)}</button>`).join('')}</div><textarea id="n-${esc(id)}" data-act="naosaiu" rows="2" placeholder="Justifique: o que impediu a alta hoje e qual o novo plano">${esc(p.naosaiu || '')}</textarea></div>` : ''}
       <div class="falta hdf"><label for="h-${esc(id)}">HD · hipótese diagnóstica${carryLbl(id, p, 'hd')}</label><textarea id="h-${esc(id)}" data-act="hd" rows="1" placeholder="${esc(c.diag ? 'Kanban: ' + String(c.diag).replace(/\n/g, ' ').slice(0, 90) : 'Ex.: Pneumonia comunitária, ICC descompensada')}">${esc(p.hd || '')}</textarea></div>
+      ${abQuick(id, p, ro)}
       <div class="prev" role="group" aria-label="Previsão de alta">${Object.entries(PREV).map(([v, lab]) => `<button data-act="prev" data-v="${v}" aria-pressed="${v === 'efetivada' ? isAlta(p) : p.prev === v && !p.desfecho}">${lab}</button>`).join('')}</div>
       <div class="falta"><label for="f-${esc(id)}">${FALTA_LBL[p.prev || '']}${carryLbl(id, p, 'falta')}</label>${p.prev === 'efetivada' || p.desfecho ? '' : `<div class="mots" role="group" aria-label="O que falta">${MOTF.map(m => `<button data-act="mot" data-v="${esc(m)}" aria-pressed="${(p.mot || []).includes(m)}">${esc(m)}</button>`).join('')}</div>`}<textarea id="f-${esc(id)}" data-act="falta" rows="2" placeholder="${p.prev === 'sem' ? 'Ex.: aguarda vaga de UTI, antibiótico até 12/10' : 'Ex.: resultado de eco, parecer da cirurgia, autorização'}">${esc(p.falta)}</textarea></div>
       <div class="falta"><label for="p-${esc(id)}">Pendências do dia${carryLbl(id, p, 'pend')}</label><textarea id="p-${esc(id)}" data-act="pend" rows="2" placeholder="Ex.: coletar labs, RX tórax, parecer da uro, ligar para família">${esc(p.pend || '')}</textarea>${!ro && !hasPend(p) && L.openKb(c).length ? `<button class="kbcopy" data-act="kbcopy">Trazer pendências do kanban (${L.openKb(c).length})</button>` : ''}</div>
@@ -2100,10 +2114,32 @@ function memBlock(id, p, ro) {
       return `<button data-act="ab" data-abg="${g.k}" data-abv="${v}" aria-pressed="${on}">${esc(lab)} <b>${pts}</b></button>`; }).join('')}</div>${g.ajuda ? `<p class="abh">${esc(g.ajuda)}</p>` : ''}</div>`).join('');
   const por = m.abEm ? `<p class="muted abp">Avaliada em ${esc(D.short(D.key(new Date(m.abEm))))}${m.abPor ? ' por ' + esc(m.abPor) : ''}. Se nada mudou, não precisa refazer.</p>` : '';
   return `<details class="mem" data-mem="${esc(id)}" ${open}><summary>História do paciente · ${sum}${de}</summary>
-    <div class="abwrap">${grupos}<div class="abres">${r ? `Total <b>${r.tot}</b> pontos · <b>${AB_CLS[r.cls]}</b>${r.n5 ? ` · ${r.n5} item(ns) com 5` : ''}${isCC(p) ? ' · <b>crônico complexo</b>' : ''}` : 'Toque nos itens que o paciente tem. Sem nenhum item = 0 pontos.'}${!ro && m.ab ? ' <button class="link" data-act="abzero">limpar</button>' : ''}${!ro && !m.ab ? ' <button class="link" data-act="abnada">Paciente sem nenhum item (0)</button>' : ''}</div>${por}</div>
+    <div class="abwrap">${grupos}<div class="abres">${r ? `Total <b>${r.tot}</b> pontos · <b>${AB_CLS[r.cls]}</b>${r.n5 ? ` · ${r.n5} item(ns) com 5` : ''}${isCC(p) ? ' · <b>crônico complexo</b>' : ''}` : 'Toque nos itens que o paciente tem. Sem nenhum item = 0 pontos.'}${!ro && m.ab && m.abRapido ? ' <button class="link" data-act="abfim">Concluir avaliação</button>' : ''}${!ro && m.ab ? ' <button class="link" data-act="abzero">limpar</button>' : ''}${!ro && !m.ab ? ' <button class="link" data-act="abnada">Paciente sem nenhum item (0)</button>' : ''}</div>${por}</div>
     ${MEM_TXT.map(([k, lab, ph]) => `<div class="falta"><label for="m${k}-${esc(id)}">${lab}</label><textarea id="m${k}-${esc(id)}" data-act="mem:${k}" rows="1" placeholder="${esc(ph)}">${esc(m[k] || '')}</textarea></div>`).join('')}
     <div class="falta"><label>Plano de cuidado</label><div class="mots">${PLANO_CC.map(x => `<button data-act="memplano" data-v="${esc(x)}" aria-pressed="${(m.plano || []).includes(x)}">${esc(x)}</button>`).join('')}</div></div>
   </details>`;
+}
+
+/* triagem rápida no topo do cartão: dispositivos marcam os itens da ABEMID; o resto da escala fica para completar */
+const ABQ = [['sne', 'SNE', 'nut', 'sne'], ['gtt', 'GTT', 'nut', 'gtt'], ['npt', 'NPT', 'nut', 'npt'], ['tqt', 'TQT', 'st', 'tqt'], ['svd', 'SVD', 'st', 'svp'], ['o2', 'O₂', 'vent', 'o2c'], ['cvc', 'Acesso central', 'st', 'avpc']];
+const ABQ_RX = { sne: /\bSNE\b|SONDA NASO ?ENTERAL|SONDA NASOENTERAL/, gtt: /\bGTT\b|GASTROSTOMIA/, npt: /\bNPT\b|PARENTERAL/, tqt: /\bTQT\b|TRAQUEOSTOMIA|TRAQUEOSTOMIZAD/, svd: /\bSVD\b|SONDA VESICAL|\bSVA\b/, o2: /\bO2\b|CATETER NASAL|\bCN O2|VENTURI|MASCARA (DE )?O2|OXIGENIO/, cvc: /\bCVC\b|CATETER VENOSO CENTRAL|\bPICC\b|PORT ?A ?CATH|ACESSO CENTRAL/ };
+const abqOn = (ab, q) => { const g = ABEMID.find(x => x.k === q[2]); return g.soma ? (ab[q[2]] || []).includes(q[3]) : ab[q[2]] === q[3]; };
+const abPend = p => present(p) && (!(p.mem && p.mem.ab) || !!p.mem.abRapido);
+const kbDevs = c => { const t = L.norm([c.diag, c.plano, c.obs, c.multi, c.exames, c.proc, c.longa].filter(Boolean).join(' ')); return ABQ.filter(q => ABQ_RX[q[0]].test(t)).map(q => q[0]); };
+const ABQ_ALERTA = ['sne', 'gtt', 'npt', 'tqt', 'cvc'];
+const dispOk = p => !!(p.mem && (p.mem.dispOk || (p.mem.ab && !p.mem.abRapido)));
+const invasivo = p => { const ab = p.mem?.ab || {}, r = abCalc(p.mem?.ab); return ABQ.some(q => ABQ_ALERTA.includes(q[0]) && abqOn(ab, q)) || (r && r.tot >= 5); };
+function abQuick(id, p, ro) {
+  if (!present(p)) return '';
+  const m = p.mem || {}, ab = m.ab || {}, r = abCalc(m.ab), sug = kbDevs(p.c || {}), ok = dispOk(p);
+  const devs = ABQ.filter(q => abqOn(ab, q)), nada = ok && !devs.length;
+  const chips = ABQ.map(q => `<button data-act="abq" data-abq="${q[0]}" aria-pressed="${abqOn(ab, q)}" class="${!abqOn(ab, q) && sug.includes(q[0]) ? 'kbs' : ''}">${esc(q[1])}</button>`).join('') + `<button data-act="abnada" class="none" aria-pressed="${nada}">Nenhum</button>`;
+  let msg = '';
+  if (!ok) msg = `<p class="abq-h">Toque nos dispositivos que o paciente usa, ou em <b>Nenhum</b>${sug.length ? ' <span class="kbt">· em destaque: citado no kanban</span>' : ''}.</p>`;
+  else if (abPend(p) && invasivo(p)) msg = `<div class="abq-alert">⚠ <b>Paciente invasivo e crônico: precisa da ABEMID.</b> Parcial ${r ? r.tot : 0} ponto(s) com ${devs.map(q => q[1]).join(', ')}.${ro ? '' : ' <button class="btn sm" data-act="abopen">Preencher ABEMID (1 min)</button>'}</div>`;
+  else if (abPend(p) && devs.length) msg = `<p class="abq-h">ABEMID parcial ${r ? r.tot : 0}. ${ro ? '' : '<button class="link" data-act="abopen">Completar</button>'}</p>`;
+  else if (r && m.ab) msg = `<p class="abq-h">ABEMID <b>${r.tot}</b> · ${AB_CLS[r.cls]}${isCC(p) ? ' · <b>crônico complexo</b>' : ''}</p>`;
+  return `<div class="abq ${ok ? '' : 'need'} ${abPend(p) && invasivo(p) ? 'alert' : ''}"><label>Dispositivos ${ok ? '' : '<span class="req">obrigatório</span>'}</label><div class="mots">${chips}</div>${msg}</div>`;
 }
 /* memória: quem ainda não tem, busca a mesma pessoa nos dias anteriores (mesmo atendimento ou mesmo nome), até 10 dias */
 const memNm = s => L.norm(s || '').split(' ').filter(w => w && !/^(DE|DA|DO|DOS|DAS|E)$/.test(w));
@@ -2155,12 +2191,20 @@ $('list').addEventListener('click', e => {
   if ((act === 'prev' && b.dataset.v === 'efetivada') || act === 'alta') write(id, isAlta(p) ? { prev: back(), desfecho: '', desfechoEm: '' } : { prev: 'efetivada', prevAntes: p.prev === 'efetivada' ? (p.prevAntes || '') : (p.prev || ''), desfecho: 'alta', desfechoEm: now });
   else if (act === 'prev' || act === 'sug') write(id, { prev: p.prev === b.dataset.v && act === 'prev' && !p.desfecho ? '' : b.dataset.v, ...(isAlta(p) ? { desfecho: '', desfechoEm: '' } : {}) });
   else if (act === 'kbcopy') write(id, { pend: L.openKb(p.c).join('\n') });
-  else if (act === 'ab' || act === 'abzero' || act === 'abnada') {
-    const m = p.mem || {}, ab = { ...(m.ab || {}) }, g = ABEMID.find(x => x.k === b.dataset.abg), v = b.dataset.abv;
-    if (act === 'ab') { if (g.soma) { const cur = ab[g.k] || []; ab[g.k] = cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v]; } else ab[g.k] = ab[g.k] === v ? '' : v; }
+  else if (act === 'abfim') { const m = p.mem || {}; write(id, { mem: { ...m, abRapido: false }, memDe: p.memDe || S.day }); }
+  else if (act === 'abopen') { (S.memOpen = S.memOpen || new Set()).add(id); const el = document.querySelector(`.pt[data-id="${CSS.escape(id)}"] details.mem`); if (el) { el.open = true; el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } }
+  else if (act === 'ab' || act === 'abzero' || act === 'abnada' || act === 'abq') {
+    const m = p.mem || {}, ab = { ...(m.ab || {}) };
+    let g = ABEMID.find(x => x.k === b.dataset.abg), v = b.dataset.abv;
+    if (act === 'abq') { const q = ABQ.find(x => x[0] === b.dataset.abq); g = ABEMID.find(x => x.k === q[2]); v = q[3]; }
+    if (act === 'ab' || act === 'abq') { if (g.soma) { const cur = ab[g.k] || []; ab[g.k] = cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v]; } else ab[g.k] = ab[g.k] === v ? '' : v; }
+    const quickNada = act === 'abnada' && b.classList.contains('none');
+    if (quickNada) for (const q of ABQ) { const gg = ABEMID.find(x => x.k === q[2]); if (gg.soma) ab[gg.k] = (ab[gg.k] || []).filter(x => x !== q[3]); else if (ab[gg.k] === q[3]) ab[gg.k] = ''; }
     const nab = act === 'abzero' ? null : ab, r = abCalc(nab || {});
-    (S.memOpen = S.memOpen || new Set()).add(id);
-    write(id, { mem: { ...m, ab: nab, abTot: nab ? r.tot : null, abCls: nab ? r.cls : '', abEm: nab ? now : '', abPor: nab ? (S.me || '') : '' }, memDe: p.memDe || S.day });
+    // dispositivos marcados deixam a ABEMID "a completar" até alguém mexer na escala completa; "Nenhum" sem outros itens fecha com 0
+    const rapido = act === 'abq' ? (m.ab && !m.abRapido ? false : true) : quickNada ? (r.tot > 0 && !!m.abRapido) : false;
+    if (act !== 'abq' && !quickNada) (S.memOpen = S.memOpen || new Set()).add(id);
+    write(id, { mem: { ...m, ab: nab, dispOk: act === 'abzero' ? false : (act === 'abq' || quickNada) ? true : m.dispOk, abRapido: nab ? rapido : false, abTot: nab ? r.tot : null, abCls: nab ? r.cls : '', abEm: nab ? now : '', abPor: nab ? (S.me || '') : '' }, memDe: p.memDe || S.day });
   }
   else if (act === 'memplano') { const m = p.mem || {}, cur = m.plano || [], v = b.dataset.v; (S.memOpen = S.memOpen || new Set()).add(id); write(id, { mem: { ...m, plano: cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v] }, memDe: p.memDe || S.day }); }
   else if (act === 'mot') { const cur = p.mot || [], m = b.dataset.v; write(id, { mot: cur.includes(m) ? cur.filter(x => x !== m) : [...cur, m] }); }
