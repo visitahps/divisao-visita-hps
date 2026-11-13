@@ -1777,6 +1777,7 @@ function dcWrite(key, id, patch, isNew) {
 }
 function renderDC() {
   const el = $('dcBox'); if (!el) return;
+  if (H.id !== 'hps') { el.hidden = true; el.innerHTML = ''; return; } // day clinic só no HPS
   if (el.contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName)) { S.dcDirty = true; return; }
   S.dcDirty = false;
   const all = dcAll(), sts = all.map(x => dcState(x.d));
