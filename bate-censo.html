@@ -833,7 +833,7 @@ dSAmiECD0Adivpo5aHfvbi1o8Wx9mfpHQ6QYIEM8b/A0LLcrV1IkCNAAAAAElFTkSuQmCC"><span cl
       <div>
         <label class="lbl" for="divTxt">Divisão do dia <span class="hint" style="font-weight:600">· sem o PDF? Cole só a divisão e toque em Montar</span></label>
         <textarea class="divtxt" id="divTxt" rows="6" placeholder="Cole aqui o texto da divisão que foi para o WhatsApp (*DIVISÃO DE VISITA HPS — dd/mm/aaaa*) para organizar a lista por médico."></textarea>
-        <div class="row" style="margin-top:8px"><button class="btn primary" id="build" disabled>Montar bate censo</button></div>
+        <div class="row" style="margin-top:8px"><button class="btn primary" id="build" disabled>Montar bate censo</button><button class="btn" id="hoBuild" hidden></button></div>
         <p class="status" id="buildStatus"></p>
         <p class="hint" id="privacy" hidden>Os arquivos e o que for preenchido ficam só neste aparelho. Nada é enviado para servidor. Se a divisão do dia for feita neste aparelho, o bate censo abre já montado e não precisa carregar nada aqui.</p>
         <p class="hint">Se o dia já existe, o censo novo só atualiza leitos e dias: o que já foi preenchido fica. Quem saiu do censo aparece no fim da lista como provável alta.</p>
@@ -1450,7 +1450,10 @@ function renderFiles() {
   const kb = UNITS.filter(u => S.census[u]?.fromKanban);
   if (kb.length) setStatus('buildStatus', `Sem censo de ${kb.join(', ')}: usando os leitos do kanban. Confira altas e admissões que o kanban ainda não mostra.`, true);
 }
-function setStatus(id, msg, err) { const el = $(id); if (!el) return; el.textContent = msg || ''; el.classList.toggle('err', !!err); }
+/* montagem automática: a tela da divisão abre o bate censo escondido (?auto=1) e recebe o andamento por aqui */
+const AUTO = (() => { try { return new URLSearchParams(location.search).get('auto') === '1' && window.parent !== window; } catch (e) { return false; } })();
+function autoPost(st, msg) { if (!AUTO) return; try { window.parent.postMessage({ bcAuto: 1, hosp: H.id, st, msg: String(msg || '') }, location.origin); } catch (e) {} }
+function setStatus(id, msg, err) { if (id === 'buildStatus' && msg) autoPost(err ? 'aviso' : 'prog', msg); const el = $(id); if (!el) return; el.textContent = msg || ''; el.classList.toggle('err', !!err); }
 
 async function buildDay() {
   if (!S.canWrite) return;
@@ -1498,15 +1501,18 @@ async function buildDay() {
   const nTot = n + [...existing].filter(([id, p]) => !seen.has(id) && !String(id).startsWith('dc-') && p.presente !== false && p.c?.unit && !carregados.has(p.c.unit)).length;
   let errMsg = null;
   try {
-    await S.store.putDay(key, { date: D.br(day), censoEm: new Date().toISOString(), total: nTot, kanban: S.kanbanName || '', units: Object.fromEntries(UNITS.map(u => [u, S.census[u]?.patients.length || 0])) });
+    const meta = { date: D.br(day), censoEm: new Date().toISOString(), total: nTot, kanban: S.kanbanName || '', units: Object.fromEntries(UNITS.map(u => [u, S.census[u]?.patients.length || 0])), ...(S.hoAt ? { handoffAt: S.hoAt } : {}) };
+    await S.store.putDay(key, { ...meta, parcial: true });
     if (S.store.putMany) await S.store.putMany(key, jobs, (k, t) => setStatus('buildStatus', `Salvando… ${k} de ${t}`));
     else { let i = 0; const workers = Array.from({ length: 4 }, async () => { while (i < jobs.length) { const j = jobs[i++]; await S.store.putPatient(key, j.id, j.body, j.isNew); setStatus('buildStatus', `Salvando… ${Math.min(i, jobs.length)} de ${jobs.length}`); } }); await Promise.all(workers); }
+    await S.store.putDay(key, meta);
     setStatus('buildStatus', `Pronto: ${n} pacientes de ${D.br(day)}${div.rows.length ? ` · divisão encontrada para ${divHits}` : ''}.`);
     openDay(key); $('load').open = false;
   } catch (e) {
     errMsg = e?.code === 'quota_exceeded' ? 'A base da página está cheia. Apague dias antigos para continuar.' : e?.code === 'invalid_argument' ? 'Esta conta só pode ver o bate censo, não preencher.' : 'Não consegui salvar: ' + (e?.message || e);
     if (e?.parcial) openDay(key);
-  } finally { renderFiles(); if (errMsg) { $('load').open = true; setStatus('buildStatus', errMsg, true); try { alert(errMsg); } catch (x) {} } }
+  } finally { renderFiles(); if (errMsg) { $('load').open = true; setStatus('buildStatus', errMsg, true); if (!AUTO) try { alert(errMsg); } catch (x) {} } }
+  return !errMsg;
 }
 
 /* ======================= bate censo só com a divisão (sem o PDF do censo) =======================
@@ -1556,15 +1562,18 @@ async function buildFromDiv() {
     });
     for (const [id, p] of existing) if (!seen.has(id) && !String(id).startsWith('dc-') && p.presente !== false) jobs.push({ id, body: { presente: false }, isNew: false });
     const n = seen.size, porU = {}; for (const j of jobs) if (j.body.c) porU[j.body.c.unit] = (porU[j.body.c.unit] || 0) + 1;
-    await S.store.putDay(key, { date: D.br(day), censoEm: new Date().toISOString(), total: n, kanban: '', semCenso: true, units: Object.fromEntries(UNITS.map(u => [u, porU[u] || 0])) });
+    const meta = { date: D.br(day), censoEm: new Date().toISOString(), total: n, kanban: '', semCenso: true, units: Object.fromEntries(UNITS.map(u => [u, porU[u] || 0])), ...(S.hoAt ? { handoffAt: S.hoAt } : {}) };
+    await S.store.putDay(key, { ...meta, parcial: true });
     if (S.store.putMany) await S.store.putMany(key, jobs, (k, t) => setStatus('buildStatus', `Salvando… ${k} de ${t}`));
     else { let i = 0; const workers = Array.from({ length: 4 }, async () => { while (i < jobs.length) { const j = jobs[i++]; await S.store.putPatient(key, j.id, j.body, j.isNew); setStatus('buildStatus', `Salvando… ${Math.min(i, jobs.length)} de ${jobs.length}`); } }); await Promise.all(workers); }
+    await S.store.putDay(key, meta);
     setStatus('buildStatus', `Pronto: ${n} pacientes de ${D.br(day)} montados pela divisão (${carried} já estavam no bate censo${prevKey && prevKey !== key ? ' de ' + D.short(prevKey) : ''}, ${novos} novos). Quando tiver o PDF do censo, carregue para completar convênio e dias de internação.`);
     openDay(key); $('load').open = false;
   } catch (e) {
     errMsg = e?.code === 'invalid_argument' ? 'Esta conta só pode ver o bate censo, não preencher.' : 'Não consegui salvar: ' + (e?.message || e);
     if (e?.parcial) openDay(key);
-  } finally { renderFiles(); if (errMsg) { $('load').open = true; setStatus('buildStatus', errMsg, true); try { alert(errMsg); } catch (x) {} } }
+  } finally { renderFiles(); if (errMsg) { $('load').open = true; setStatus('buildStatus', errMsg, true); if (!AUTO) try { alert(errMsg); } catch (x) {} } }
+  return !errMsg;
 }
 
 /* ======================= dia aberto ======================= */
@@ -1572,13 +1581,21 @@ let unsubDay = null;
 const todayKey = () => D.key(new Date());
 function renderDayWarn() {
   const el = $('dayWarn'); if (!el || !S.day) return;
-  const newest = S.days[0]?.id || '', tk = todayKey();
-  if (S.day === newest && S.day >= tk) { el.hidden = true; return; }
-  el.hidden = false;
-  el.innerHTML = S.day !== newest
-    ? `<b>Atenção: você está no bate censo de ${esc(D.short(S.day))}.</b> O mais recente é o de ${esc(D.short(newest))}. <button class="btn primary" id="goNewest">Ir para ${esc(D.short(newest))}</button>`
-    : `<b>Atenção: este é o bate censo de ${esc(D.short(S.day))}.</b> O de hoje (${esc(D.short(tk))}) ainda não foi montado. O que for marcado aqui fica no dia ${esc(D.short(S.day))}.`;
+  const newest = S.days[0]?.id || '', tk = todayKey(), cur = S.days.find(d => d.id === S.day);
+  const ho = S.ho && S.ho.key >= S.day ? ` <button class="btn primary" data-ho="1">Montar ${esc(S.ho.date.slice(0, 5))} com a divisão deste aparelho</button>` : '';
+  const comoMontar = ' Para montar: em "Carregar ou atualizar o censo", carregue o PDF do censo ou cole o texto da divisão do WhatsApp e toque em Montar.';
+  if (cur && cur.parcial && !S.building) {
+    el.hidden = false;
+    el.innerHTML = `<b>O bate censo de ${esc(D.short(S.day))} está sendo montado ou a montagem não terminou.</b> Se em 1 minuto a lista não completar, monte de novo.${ho || comoMontar}`;
+  } else if (S.day === newest && S.day >= tk) { el.hidden = true; return; }
+  else {
+    el.hidden = false;
+    el.innerHTML = S.day !== newest
+      ? `<b>Atenção: você está no bate censo de ${esc(D.short(S.day))}.</b> O mais recente é o de ${esc(D.short(newest))}. <button class="btn primary" id="goNewest">Ir para ${esc(D.short(newest))}</button>`
+      : `<b>Atenção: este é o bate censo de ${esc(D.short(S.day))}.</b> O de hoje (${esc(D.short(tk))}) ainda não foi montado. O que for marcado aqui fica no dia ${esc(D.short(S.day))}.${ho || comoMontar}`;
+  }
   const b = $('goNewest'); if (b) b.onclick = () => { S.dayManual = false; openDay(newest); };
+  el.querySelectorAll('[data-ho]').forEach(x => x.onclick = () => { x.disabled = true; useHandoff(true); });
 }
 function openDay(key) {
   if (!key) return;
@@ -2016,7 +2033,9 @@ function renderChips() {
 const bedSort = (a, b) => UNITS.indexOf(a.c.unit) - UNITS.indexOf(b.c.unit) || String(a.c.bed).localeCompare(String(b.c.bed), 'pt', { numeric: true });
 function visible() {
   const fn = fOf(S.f), q = L.norm(S.q);
-  return [...S.pats].filter(([id, p]) => p.c && fn(p, id) && (S.unit === 'todos' || p.c.unit === S.unit) && (!q || L.norm(p.c.bed + ' ' + p.c.name).includes(q)));
+  // em "Todos", quem foi excluído mas segue no censo aparece no fim, no grupo "Excluídos do bate censo", para ninguém sumir sem querer
+  const comExcl = S.f === 'todos';
+  return [...S.pats].filter(([id, p]) => p.c && (fn(p, id) || (comExcl && p.excluido && p.presente !== false)) && (S.unit === 'todos' || p.c.unit === S.unit) && (!q || L.norm(p.c.bed + ' ' + p.c.name).includes(q)));
 }
 function renderList(full) {
   const rows = visible();
@@ -2256,6 +2275,7 @@ const drop = $('drop');
 drop.addEventListener('drop', e => handleFiles([...e.dataTransfer.files]));
 drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('fileIn').click(); } });
 $('build').addEventListener('click', buildDay);
+$('hoBuild').addEventListener('click', () => useHandoff(true));
 $('divTxt').addEventListener('input', () => { clearTimeout(S.divT); S.divT = setTimeout(renderFiles, 250); });
 
 /* ======================= saídas ======================= */
@@ -2497,21 +2517,48 @@ const IDB = {
   async get(k) { const db = await this.open(); return new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
 };
 /* a divisão feita neste aparelho entrega censos, kanban e médicos: monta o bate censo sozinho */
-async function useHandoff() {
-  if (window.claude || !window.indexedDB || !S.canWrite || S.store.kind === 'db') return;
-  let h = null; try { h = await IDB.get(nsKey('handoff')); } catch (e) { return; }
-  if (!h || !h.files?.length || !D.parse(h.date) || (h.hosp && h.hosp !== H.id)) return;
-  const key = D.key(D.parse(h.date)), day = S.days.find(d => d.id === key);
-  if (day && day.censoEm && day.censoEm >= h.savedAt) return;
+async function readHandoff() {
+  if (window.claude || !window.indexedDB) return null;
+  let h = null; try { h = await IDB.get(nsKey('handoff')); } catch (e) { return null; }
+  if (!h || !(h.files?.length || h.div) || !D.parse(h.date) || (h.hosp && h.hosp !== H.id)) return null;
+  return { ...h, key: D.key(D.parse(h.date)) };
+}
+/* force: montar de novo mesmo que o dia já exista (botão "Montar com a divisão deste aparelho") */
+async function useHandoff(force) {
+  if (window.claude || !window.indexedDB || !S.canWrite || S.store.kind !== 'sheet') { autoPost('erro', 'Este aparelho não está conectado à lista da equipe. Abra o bate censo e entre com o seu login.'); return; }
+  const h = await readHandoff(); S.ho = h;
+  if (!h) { autoPost('erro', 'Não encontrei a divisão salva neste aparelho.'); renderHoBtn(); return; }
+  const key = h.key, day = S.days.find(d => d.id === key);
+  if (!force && day && day.censoEm && !day.parcial && day.censoEm >= h.savedAt) { autoPost('ok', `Bate censo de ${h.date.slice(0, 5)} já está montado com esta divisão (${day.total ?? ''} pacientes).`); renderHoBtn(); return; }
+  if (S.building) return;
+  S.building = true; renderHoBtn();
   const box = $('handoff'); box.hidden = false;
-  box.innerHTML = `<b>Usando a divisão de ${esc(h.date.slice(0, 5))} feita neste aparelho…</b>`;
+  box.innerHTML = `<b>Montando o bate censo de ${esc(h.date.slice(0, 5))} com a divisão feita neste aparelho…</b> Não feche esta tela até aparecer "montado".`;
+  autoPost('prog', `Montando o bate censo de ${h.date.slice(0, 5)}…`);
+  let ok = false;
   try {
     S.census = {}; S.kanban = null; S.kanbanName = '';
-    await handleFiles(h.files.map(x => new File([x.data], x.name, { type: x.type })));
+    if (h.files?.length) await handleFiles(h.files.map(x => new File([x.data], x.name, { type: x.type })));
     $('divTxt').value = h.div || ''; if (h.fones) FONES.add(h.fones);
-    await buildDay();
+    S.hoAt = h.savedAt;
+    ok = await buildDay();
+  } catch (e) { ok = false; }
+  S.hoAt = null; S.building = false;
+  if (ok) {
+    const nP = S.days.find(d => d.id === key)?.total;
     box.innerHTML = `<b>Bate censo de ${esc(h.date.slice(0, 5))} montado com a divisão feita neste aparelho às ${D.hm(h.savedAt)}.</b> ${H.kanban ? 'Censos, kanban e médicos' : 'Censo e médicos'} já estão aqui. É só preencher na visita.`;
-  } catch (e) { box.innerHTML = 'Não consegui usar a divisão deste aparelho. Carregue os censos e o kanban abaixo.'; }
+    autoPost('ok', `Bate censo de ${h.date.slice(0, 5)} montado${nP ? `: ${nP} pacientes` : ''}. Já aparece para toda a equipe.`);
+  } else {
+    box.innerHTML = `<b>Não consegui terminar de montar o bate censo de ${esc(h.date.slice(0, 5))}.</b> Confira a internet e toque em "Montar com a divisão deste aparelho" abaixo, em Carregar o censo.`;
+    autoPost('erro', `Não consegui terminar de montar o bate censo de ${h.date.slice(0, 5)}. Confira a internet e tente de novo.`);
+  }
+  renderHoBtn(); renderDayWarn();
+}
+/* botão fixo em "Carregar o censo": a divisão feita neste aparelho pode montar o dia a qualquer hora */
+function renderHoBtn() {
+  const b = $('hoBuild'); if (!b) return;
+  const h = S.ho; b.hidden = !h || !S.canWrite || S.store?.kind !== 'sheet';
+  if (h) { b.textContent = S.building ? 'Montando…' : `Montar ${h.date.slice(0, 5)} com a divisão deste aparelho (feita às ${D.hm(h.savedAt)})`; b.disabled = !!S.building; }
 }
 function applyHosp() {
   document.title = 'Bate censo · ' + H.curto;
@@ -2526,6 +2573,7 @@ function applyHosp() {
 $('hospSel').addEventListener('change', e => { setHosp(e.target.value); location.href = 'bate-censo.html?h=' + e.target.value + '&v=' + Date.now(); });
 async function start() {
   readInvite(); applyHosp();
+  if (AUTO && !Auth.can(H.id)) { autoPost('erro', 'Login vencido neste aparelho. Abra o bate censo, entre com celular e senha e toque em "Montar com a divisão deste aparelho".'); return; }
   if (!window.claude && !Auth.can(H.id)) await authGate(H.id);
   if (!window.claude) { authBar(); const a = Auth.get(); if (a && a.n && a.n !== 'Coordenação') { S.me = a.n; } }
   let db = null, user = null;
@@ -2539,7 +2587,12 @@ async function start() {
   S.store.watchDays(onDays, () => setSync('local', 'Sem conexão com a base'));
   renderFiles();
   if (S.store.kind === 'local') { await new Promise(r => setTimeout(r, 60)); useHandoff(); }
-  else if (S.store.kind === 'sheet') { for (let t = 0; t < 40 && !S.daysLoaded; t++) await new Promise(r => setTimeout(r, 250)); if (!offerMigration()) useHandoff(); }
+  else if (S.store.kind === 'sheet') {
+    for (let t = 0; t < 60 && !S.daysLoaded; t++) await new Promise(r => setTimeout(r, 250));
+    if (AUTO && !S.daysLoaded) { autoPost('erro', 'Não consegui falar com a lista da equipe. Confira a internet e tente de novo.'); return; }
+    S.ho = await readHandoff(); renderHoBtn(); renderDayWarn();
+    if (AUTO || !offerMigration()) useHandoff();
+  } else autoPost('erro', 'Este aparelho não está conectado à lista da equipe. Abra o bate censo e entre com o seu login.');
 }
 start();
 if (window.claude) $('sitenav').hidden = true; else document.querySelectorAll('[data-nav]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); location.href = a.dataset.nav + '?h=' + H.id + '&v=' + Date.now(); }));

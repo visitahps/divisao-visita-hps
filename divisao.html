@@ -1704,6 +1704,7 @@ function renderBoard() {
     <p class="status" id="expStatus"></p>
     <div class="wa"><div class="row" style="justify-content:space-between"><b>Texto para o WhatsApp</b><button class="btn primary" style="width:auto" id="waCopy">Copiar texto</button></div>
       <p class="status" id="waStatus"></p>
+      ${window.claude ? '' : `<div class="row bcauto" style="margin-top:6px;align-items:center"><button class="btn" style="width:auto" id="bcAutoGo">Montar bate censo agora</button><p class="status" id="bcAutoSt" style="margin:0;flex:1"></p></div>`}
       <details><summary class="hint" style="cursor:pointer">Ver o texto</summary><textarea id="waTxt" rows="14" readonly></textarea></details></div>
     <div class="cols">${cols}</div>
     <div class="notes"><h3>Notas</h3>
@@ -1713,12 +1714,13 @@ function renderBoard() {
       ${!nt.regra.length && !nt.conferir.length && !nt.duvida.length ? '<p class="hint">Nenhuma observação.</p>' : ''}
     </div>`;
   $('waTxt').value = waText(); $('waCopy').onclick = copyWa;
+  if ($('bcAutoGo') && window.bcAuto) { $('bcAutoGo').onclick = () => bcAuto.run(); bcAuto.paint(); }
   $('xl').onclick = () => exportFile('xlsx'); $('pdf').onclick = () => exportFile('pdf');
   if (!STANDALONE && caps.downloads === false) { $('exp').hidden = true; setStatus('expStatus', 'Baixar arquivos não está disponível nesta visualização. Use a versão independente do aplicativo.', true); }
 }
 $('board').addEventListener('change', e => {
   const s = e.target.closest('[data-mv]'); if (!s) return;
-  const y = window.scrollY; S.assign.set(s.dataset.mv, +s.value); S.moved++; saveToday(); renderBoard(); window.scrollTo(0, y);
+  const y = window.scrollY; S.assign.set(s.dataset.mv, +s.value); S.moved++; saveToday(); bcAuto.changed(); renderBoard(); window.scrollTo(0, y);
 });
 
 /* ---------- exportação ---------- */
@@ -1749,7 +1751,56 @@ function waText() {
   });
   return out.join('\n').trim();
 }
+/* ======================= monta o bate censo daqui mesmo =======================
+   Ao copiar a divisão, o bate censo do dia é montado em segundo plano (a página do bate censo abre escondida,
+   usa os censos e a divisão deste aparelho e salva na lista da equipe). Não depende de abrir o bate censo. */
+var bcAuto = {
+  st: null, frame: null, timer: null, again: false, built: false, wait: null,
+  set(kind, txt) { this.st = { kind, txt }; this.paint(); },
+  paint() {
+    const el = $('bcAutoSt'), b = $('bcAutoGo'); if (!el) return;
+    const st = this.st || { kind: '', txt: 'O bate censo do dia é montado sozinho quando você copia a divisão.' };
+    el.textContent = (st.kind === 'ok' ? '✓ ' : st.kind === 'erro' ? '⚠ ' : '') + st.txt;
+    el.classList.toggle('err', st.kind === 'erro');
+    if (b) { b.disabled = !!this.frame; b.textContent = this.frame ? 'Montando…' : this.built ? 'Montar de novo' : 'Montar bate censo agora'; }
+  },
+  async run() {
+    if (window.claude || !S.assign || !S.activeDocs) return;
+    if (this.frame) { this.again = true; return; }
+    if (!window.indexedDB) { this.set('erro', 'Este navegador não deixa montar daqui. Abra o bate censo e cole o texto da divisão.'); return; }
+    this.set('prog', 'Montando o bate censo… não feche esta tela até aparecer ✓.');
+    try { await saveHandoff(); } catch (e) {}
+    const f = document.createElement('iframe');
+    f.setAttribute('aria-hidden', 'true'); f.tabIndex = -1;
+    f.style.cssText = 'position:fixed;left:-10000px;top:0;width:400px;height:600px;border:0;opacity:0;pointer-events:none';
+    f.src = 'bate-censo.html?h=' + H.id + '&auto=1&v=' + Date.now();
+    this.frame = f; document.body.appendChild(f); this.paint();
+    clearTimeout(this.wait); this.wait = setTimeout(() => this.done('erro', 'O bate censo demorou demais para responder. Confira a internet e toque em Montar de novo.'), 240000);
+  },
+  done(kind, txt) {
+    clearTimeout(this.wait);
+    if (this.frame) { const f = this.frame; this.frame = null; setTimeout(() => f.remove(), 500); }
+    if (kind === 'ok') this.built = true;
+    this.set(kind, txt);
+    if (this.again) { this.again = false; setTimeout(() => this.run(), 300); }
+  },
+  /* mexeu na divisão depois de montar: atualiza o bate censo sozinho depois de alguns segundos sem mexer */
+  changed() {
+    if (!this.built && !this.frame) return;
+    clearTimeout(this.timer);
+    this.set('prog', 'A divisão mudou. O bate censo será atualizado em instantes…');
+    this.timer = setTimeout(() => this.run(), 8000);
+  }
+};
+window.addEventListener('message', e => {
+  const d = e.data; if (e.origin !== location.origin || !d || !d.bcAuto || !bcAuto.frame) return;
+  if (d.st === 'ok') bcAuto.done('ok', d.msg);
+  else if (d.st === 'erro') bcAuto.done('erro', d.msg);
+  else bcAuto.set('prog', d.msg + (/não feche/i.test(d.msg) ? '' : ' · não feche esta tela.'));
+});
+window.addEventListener('beforeunload', e => { if (bcAuto.frame) { e.preventDefault(); e.returnValue = 'O bate censo ainda está sendo montado.'; return e.returnValue; } });
 async function copyWa() {
+  if (!window.claude) bcAuto.run();
   const t = waText(); $('waTxt').value = t;
   try { await navigator.clipboard.writeText(t); setStatus('waStatus', 'Texto copiado. É só colar no WhatsApp.'); }
   catch (e) { const ta = $('waTxt'); ta.closest('details').open = true; ta.focus(); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (x) {} setStatus('waStatus', ok ? 'Texto copiado. É só colar no WhatsApp.' : 'Selecionei o texto abaixo: copie e cole no WhatsApp.', !ok); }
